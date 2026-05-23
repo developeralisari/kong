@@ -106,12 +106,19 @@ services:
       NODE_ENV: production
       TOKEN_SECRET: ${KONGA_TOKEN_SECRET}
       PORT: ${KONGA_PORT}
+      DB_ADAPTER: postgres
+      DB_HOST: kong-database
+      DB_PORT: 5432
+      DB_USER: ${KONG_PG_USER}
+      DB_PASSWORD: ${KONG_PG_PASSWORD}
+      DB_DATABASE: ${KONG_PG_DATABASE}
     ports:
       - "${KONGA_PORT}:${KONGA_PORT}"
     depends_on:
       kong:
         condition: service_healthy
     networks:
+      - kong-net
       - dokploy-network
 
 # ─── Volume'lar ───────────────────────────────────────────────────────────────
