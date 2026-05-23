@@ -76,7 +76,6 @@ services:
 
       # Kong Manager OSS
       KONG_ADMIN_GUI_LISTEN: "0.0.0.0:${KONG_MANAGER_PORT}"
-      KONG_ADMIN_GUI_URL: ${KONG_MANAGER_URL}
 
     ports:
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
