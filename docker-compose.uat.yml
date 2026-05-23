@@ -97,6 +97,22 @@ services:
       - kong-net
       - dokploy-network
 
+  # ─── Konga Web UI ─────────────────────────────────────────────────────────────
+  konga:
+    image: pantsel/konga:latest
+    container_name: uat-konga
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TOKEN_SECRET: ${KONGA_TOKEN_SECRET}
+    ports:
+      - "${KONGA_PORT}:1337"
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+
 # ─── Volume'lar ───────────────────────────────────────────────────────────────
 volumes:
   kong-postgres-data:
