@@ -78,18 +78,7 @@ services:
       KONG_DNS_RESOLVER: ""
       KONG_DNS_ORDER: LAST,SRV,A,CNAME
 
-      # Eklentiler (varsayılan + ihtiyaç duyulabilecekler)
-      KONG_PLUGINS: >-
-        bundled,
-        rate-limiting,
-        cors,
-        jwt,
-        basic-auth,
-        key-auth,
-        request-transformer,
-        response-transformer,
-        http-log,
-        file-log
+      KONG_PLUGINS: bundled
 
     depends_on:
       kong-database:
