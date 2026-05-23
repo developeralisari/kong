@@ -1,0 +1,132 @@
+services:
+
+  # ─── Kong Veritabanı ───────────────────────────────────────────────────────
+  kong-database:
+    image: postgres:18.4-alpine
+    container_name: uat-kong-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${KONG_PG_USER}
+      POSTGRES_PASSWORD: ${KONG_PG_PASSWORD}
+      POSTGRES_DB: ${KONG_PG_DATABASE}
+    volumes:
+      - kong-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KONG_PG_USER} -d ${KONG_PG_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - kong-net
+
+  # ─── Kong DB Migration (bir kez çalışır, başarılı olunca durur) ────────────
+  kong-migration:
+    image: kong:3.9.1
+    container_name: uat-kong-migration
+    command: kong migrations bootstrap
+    restart: on-failure
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_PORT: 5432
+      KONG_PG_USER: ${KONG_PG_USER}
+      KONG_PG_PASSWORD: ${KONG_PG_PASSWORD}
+      KONG_PG_DATABASE: ${KONG_PG_DATABASE}
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - kong-net
+
+  # ─── Kong API Gateway ──────────────────────────────────────────────────────
+  kong:
+    image: kong:3.9.1
+    container_name: uat-kong-gateway
+    restart: unless-stopped
+    environment:
+      # Veritabanı
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_PORT: 5432
+      KONG_PG_USER: ${KONG_PG_USER}
+      KONG_PG_PASSWORD: ${KONG_PG_PASSWORD}
+      KONG_PG_DATABASE: ${KONG_PG_DATABASE}
+
+      # Proxy dinleyicileri
+      KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
+
+      # Güvenilir IP'ler (reverse proxy arkasında çalışıyorsa)
+      KONG_TRUSTED_IPS: "0.0.0.0/0,::/0"
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_REAL_IP_RECURSIVE: "on"
+
+      # Log ayarları
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_LOG_LEVEL: ${KONG_LOG_LEVEL}
+
+      # Performans
+      KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKER_PROCESSES}
+      KONG_NGINX_PROXY_LARGE_CLIENT_HEADER_BUFFERS: "4 32k"
+
+      # DNS — dokploy-network içindeki servis adlarını çözümler
+      KONG_DNS_RESOLVER: ""
+      KONG_DNS_ORDER: LAST,SRV,A,CNAME
+
+      # Eklentiler (varsayılan + ihtiyaç duyulabilecekler)
+      KONG_PLUGINS: >-
+        bundled,
+        rate-limiting,
+        cors,
+        jwt,
+        basic-auth,
+        key-auth,
+        request-transformer,
+        response-transformer,
+        http-log,
+        file-log
+
+    ports:
+      # Dış erişim
+      - "${KONG_PROXY_HTTP_PORT}:8000"
+      - "${KONG_PROXY_HTTPS_PORT}:8443"
+      # Admin API — sadece localhost'a bağla (UAT'ta dışarıya açma)
+      - "127.0.0.1:${KONG_ADMIN_PORT}:8001"
+      # Health / status endpoint
+      - "127.0.0.1:${KONG_STATUS_PORT}:8100"
+
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - kong-net
+      - dokploy-network   # mevcut servislerle iletişim için
+
+# ─── Volume'lar ───────────────────────────────────────────────────────────────
+volumes:
+  kong-postgres-data:
+    name: kong-postgres-data
+
+# ─── Ağlar ────────────────────────────────────────────────────────────────────
+networks:
+  kong-net:
+    driver: bridge
+    name: kong-net
+
+  dokploy-network:
+    external: true   # dokploy compose ile paylaşılan ağ
