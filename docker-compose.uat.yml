@@ -11,12 +11,6 @@ services:
       POSTGRES_DB: ${KONG_PG_DATABASE}
     volumes:
       - kong-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
     networks:
       - kong-net
 
@@ -35,7 +29,7 @@ services:
       KONG_PG_DATABASE: ${KONG_PG_DATABASE}
     depends_on:
       kong-database:
-        condition: service_healthy
+        condition: service_started
     networks:
       - kong-net
 
@@ -82,7 +76,7 @@ services:
 
     depends_on:
       kong-database:
-        condition: service_healthy
+        condition: service_started
       kong-migration:
         condition: service_completed_successfully
 
