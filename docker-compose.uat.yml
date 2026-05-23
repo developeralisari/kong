@@ -105,8 +105,9 @@ services:
     environment:
       NODE_ENV: production
       TOKEN_SECRET: ${KONGA_TOKEN_SECRET}
+      PORT: ${KONGA_PORT}
     ports:
-      - "${KONGA_PORT}:1337"
+      - "${KONGA_PORT}:${KONGA_PORT}"
     depends_on:
       kong:
         condition: service_healthy
