@@ -18,7 +18,8 @@ services:
   kong-migration:
     image: kong/kong-gateway:3.9.1.1
     container_name: uat-kong-migration
-    command: "kong migrations bootstrap; kong migrations up"
+    command: >
+      sh -c "kong migrations bootstrap 2>/dev/null || true && kong migrations up"
     restart: on-failure
     environment:
       KONG_DATABASE: postgres
