@@ -74,11 +74,16 @@ services:
 
       KONG_PLUGINS: bundled
 
+      # Kong Manager OSS
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:${KONG_MANAGER_PORT}"
+      KONG_ADMIN_GUI_URL: ${KONG_MANAGER_URL}
+
     ports:
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
       - "${KONG_PROXY_HTTPS_PORT}:${KONG_PROXY_HTTPS_PORT}"
       - "${KONG_ADMIN_PORT}:${KONG_ADMIN_PORT}"
       - "${KONG_STATUS_PORT}:${KONG_STATUS_PORT}"
+      - "${KONG_MANAGER_PORT}:${KONG_MANAGER_PORT}"
 
     depends_on:
       kong-database:
@@ -97,29 +102,6 @@ services:
       - kong-net
       - dokploy-network
 
-  # ─── Konga Web UI ─────────────────────────────────────────────────────────────
-  konga:
-    image: pantsel/konga:latest
-    container_name: uat-konga
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-      TOKEN_SECRET: ${KONGA_TOKEN_SECRET}
-      PORT: ${KONGA_PORT}
-      DB_ADAPTER: postgres
-      DB_HOST: kong-database
-      DB_PORT: 5432
-      DB_USER: ${KONG_PG_USER}
-      DB_PASSWORD: ${KONG_PG_PASSWORD}
-      DB_DATABASE: ${KONG_PG_DATABASE}
-    ports:
-      - "${KONGA_PORT}:${KONGA_PORT}"
-    depends_on:
-      kong:
-        condition: service_healthy
-    networks:
-      - kong-net
-      - dokploy-network
 
 # ─── Volume'lar ───────────────────────────────────────────────────────────────
 volumes:
