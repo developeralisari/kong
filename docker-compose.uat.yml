@@ -2,7 +2,7 @@ services:
 
   # ─── Kong Veritabanı ───────────────────────────────────────────────────────
   kong-database:
-    image: postgres:18.4-alpine
+    image: postgres:latest
     container_name: uat-kong-database
     restart: unless-stopped
     environment:
