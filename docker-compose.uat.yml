@@ -16,7 +16,7 @@ services:
 
   # ─── Kong DB Migration (bir kez çalışır, başarılı olunca durur) ────────────
   kong-migration:
-    image: kong:3.9.1
+    image: kong/kong-gateway:3.9.1.1
     container_name: uat-kong-migration
     command: kong migrations bootstrap
     restart: on-failure
@@ -35,7 +35,7 @@ services:
 
   # ─── Kong API Gateway ──────────────────────────────────────────────────────
   kong:
-    image: kong:3.9.1
+    image: kong/kong-gateway:3.9.1.1
     container_name: uat-kong-gateway
     restart: unless-stopped
     environment:
