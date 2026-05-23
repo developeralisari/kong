@@ -75,11 +75,14 @@ services:
 
       KONG_PLUGINS: bundled
 
-      # Kong Manager OSS
+      # Kong Manager
       KONG_ADMIN_GUI_LISTEN: "0.0.0.0:${KONG_MANAGER_PORT}"
       KONG_ADMIN_GUI_PATH: /
       KONG_ADMIN_GUI_URL: ${KONG_MANAGER_URL}
       KONG_ADMIN_GUI_API_URL: ${KONG_ADMIN_API_URL}
+      KONG_ADMIN_GUI_AUTH: basic-auth
+      KONG_ADMIN_GUI_SESSION_CONF: '{"secret":"${KONG_SESSION_SECRET}","storage":"kong","cookie_secure":true,"cookie_same_site":"Strict"}'
+      KONG_ENFORCE_RBAC: "on"
 
     ports:
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
