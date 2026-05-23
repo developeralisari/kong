@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${KONG_PG_PASSWORD}
       POSTGRES_DB: ${KONG_PG_DATABASE}
     volumes:
-      - kong-postgres-data:/var/lib/postgresql/data
+      - kong-postgres-data:/var/lib/postgresql
     networks:
       - kong-net
 
