@@ -94,7 +94,7 @@ services:
 # ─── Volume'lar ───────────────────────────────────────────────────────────────
 volumes:
   kong-postgres-data:
-    name: kong-postgres-data
+    name: uat-kong-postgres-data
 
 # ─── Ağlar ────────────────────────────────────────────────────────────────────
 networks:
