@@ -19,7 +19,7 @@ services:
     image: kong/kong-gateway:3.9.1.1
     container_name: uat-kong-migration
     command: >
-      sh -c "kong migrations bootstrap 2>/dev/null || true && kong migrations up && kong migrations finish"
+      sh -c "kong migrations bootstrap; kong migrations up && kong migrations finish"
     restart: on-failure
     environment:
       KONG_DATABASE: postgres
@@ -70,7 +70,7 @@ services:
       KONG_NGINX_PROXY_LARGE_CLIENT_HEADER_BUFFERS: "4 32k"
 
       # DNS — dokploy-network içindeki servis adlarını çözümler
-      KONG_DNS_RESOLVER: ""
+      # KONG_DNS_RESOLVER ayarlanmadı: Kong /etc/resolv.conf'u (Docker embedded DNS 127.0.0.11) kullanır
       KONG_DNS_ORDER: LAST,SRV,A,CNAME
 
       KONG_PLUGINS: bundled
@@ -82,11 +82,11 @@ services:
       KONG_ADMIN_GUI_API_URL: ${KONG_ADMIN_API_URL}
 
     ports:
+      # Yalnızca proxy portları host'a yayınlanır.
+      # Admin (18001), Status (18100) ve Manager (18002) yayınlanmaz:
+      # bunlara dokploy-network üzerinden (reverse-proxy/Traefik) erişilir, public IP'den değil.
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
       - "${KONG_PROXY_HTTPS_PORT}:${KONG_PROXY_HTTPS_PORT}"
-      - "${KONG_ADMIN_PORT}:${KONG_ADMIN_PORT}"
-      - "${KONG_STATUS_PORT}:${KONG_STATUS_PORT}"
-      - "${KONG_MANAGER_PORT}:${KONG_MANAGER_PORT}"
 
     depends_on:
       kong-database:
