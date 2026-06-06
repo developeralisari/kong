@@ -107,7 +107,7 @@ services:
 
   # ─── Cloudflare Tunnel — Kong'u Cloudflare üzerinden güvenli yayınlar ────────
   # Sunucuda açık port olmadan, Cloudflare edge'den Kong'a tünel kurar.
-  # Token dokploy env'e CLOUDFLARE_TUNNEL_TOKEN olarak girilir.
+  # Token dokploy env'e TUNNEL_TOKEN olarak girilir (değer sadece eyJ... token'ı).
   # Cloudflare panelinde "Public Hostname" eşlemeleri (aynı ağdaki konteyner adıyla):
   #   uat-kong.medasista.com        -> http://uat-kong-gateway:${KONG_MANAGER_PORT}
   #   uat-kong-admin.medasista.com  -> http://uat-kong-gateway:${KONG_ADMIN_PORT}
@@ -117,7 +117,7 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     depends_on:
       kong:
         condition: service_started
