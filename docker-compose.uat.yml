@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${KONG_PG_PASSWORD}
       POSTGRES_DB: ${KONG_PG_DATABASE}
     volumes:
-      - ${KONG_POSTGRES_VOLUME_NAME}:${POSTGRES_DATA_PATH}
+      - kong-postgres-data:${POSTGRES_DATA_PATH}
     networks:
       - kong-net
 
@@ -119,7 +119,7 @@ services:
       - "--search.maxMemoryPerQuery=0"
       - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
     volumes:
-      - ${VICTORIA_METRICS_VOLUME_NAME}:/storage
+      - victoria-metrics-data:/storage
       - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
     networks:
       - dokploy-network
@@ -141,7 +141,7 @@ services:
       - "${GRAFANA_PORT}:${GRAFANA_PORT}"
 
     volumes:
-      - ${GRAFANA_VOLUME_NAME}:/var/lib/grafana
+      - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
