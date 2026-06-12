@@ -108,6 +108,9 @@ services:
     image: victoriametrics/victoria-metrics:${VICTORIA_METRICS_VERSION}
     container_name: ${VICTORIA_METRICS_CONTAINER_NAME}
     restart: unless-stopped
+    ports:
+      - "${VICTORIA_METRICS_PORT}:${VICTORIA_METRICS_PORT}"
+
     command:
       - "--storageDataPath=/storage"
       - "--retentionPeriod=${VICTORIA_METRICS_RETENTION_DAYS}"
@@ -134,6 +137,9 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL}
       GF_PATHS_DATA: /var/lib/grafana
       GF_PATHS_LOGS: /var/log/grafana
+    ports:
+      - "${GRAFANA_PORT}:${GRAFANA_PORT}"
+
     volumes:
       - ${GRAFANA_VOLUME_NAME}:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
