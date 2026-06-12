@@ -1,7 +1,3 @@
-# VictoriaMetrics scrape config
-# Kong'un prometheus plugin'i /metrics endpoint'ini KONG_STATUS_PORT (18100) üzerinde yayınlar.
-# Bu dosyayı VictoriaMetrics container'ına mount ediyoruz.
-
 scrape_configs:
   - job_name: 'kong'
     metrics_path: /metrics
@@ -9,7 +5,7 @@ scrape_configs:
     scrape_timeout: 10s
     static_configs:
       - targets:
-          - 'kong:18100'
+          - '${KONG_PG_HOST}:${KONG_STATUS_PORT}'
         labels:
-          environment: 'uat'
-          cluster: 'medasista-kong'
+          environment: '${SCRAPE_ENVIRONMENT}'
+          cluster: '${SCRAPE_CLUSTER}'
