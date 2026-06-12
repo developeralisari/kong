@@ -105,12 +105,15 @@ services:
       - kong-net
       - dokploy-network
 
-  # ─── Cloudflare Tunnel — Kong'u Cloudflare üzerinden güvenli yayınlar ────────
-  # Sunucuda açık port olmadan, Cloudflare edge'den Kong'a tünel kurar.
+  # ─── Cloudflare Tunnel — Kong + VictoriaMetrics + Grafana'yı güvenli yayınlar ─
+  # Sunucuda açık port olmadan, Cloudflare edge'den iç servis'e tünel kurar.
   # Token dokploy env'e TUNNEL_TOKEN olarak girilir (değer sadece eyJ... token'ı).
-  # Cloudflare panelinde "Public Hostname" eşlemeleri (aynı ağdaki konteyner adıyla):
-  #   uat-kong.medasista.com        -> http://uat-kong-gateway:${KONG_MANAGER_PORT}
-  #   uat-kong-admin.medasista.com  -> http://uat-kong-gateway:${KONG_ADMIN_PORT}
+  #
+  # Cloudflare panelinde "Public Hostname" eşlemeleri (aynı ağdaki konteyner adı + port):
+  #   uat-kong.medasista.com             -> http://uat-kong-gateway:${KONG_MANAGER_PORT}
+  #   uat-kong-admin.medasista.com       -> http://uat-kong-gateway:${KONG_ADMIN_PORT}
+  #   uat-kong-grafana.medasista.com     -> http://uat-grafana:3000
+  #   (VictoriaMetrics public'e açılmaz — sadece Grafana sorgular, dışarıya kapalı)
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: uat-cloudflared
@@ -124,11 +127,69 @@ services:
     networks:
       - dokploy-network
 
+  # ─── VictoriaMetrics — Kong metriklerini toplar (Prometheus drop-in) ────────
+  # /metrics endpoint'i Kong üzerindeki prometheus plugin tarafından yayınlanır
+  # (Plugin'i Kong Manager'dan veya Admin API'den global enable et).
+  # VictoriaMetrics her 60 saniyede bir Kong'u scrape eder.
+  # Veri 30 gün saklanır (retention), sonra otomatik silinir.
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: uat-victoria-metrics
+    restart: unless-stopped
+    command:
+      - "--storageDataPath=/storage"
+      - "--retentionPeriod=30"
+      - "--httpListenAddr=:8428"
+      # Düşük kaynak kullanımı için
+      - "--memory.allowedPercent=40"
+      - "--search.maxMemoryPerQuery=0"
+      # Kong'un /metrics endpoint'ini scrape et
+      - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
+    volumes:
+      - victoria-metrics-data:/storage
+      - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
+    networks:
+      - dokploy-network
+      - kong-net
+    # Dışarıya port açmıyoruz — sadece aynı network'teki Grafana erişir.
+    # Dışarıdan VictoriaMetrics'e erişmek için Cloudflare Tunnel'de
+    # bu servise Public Hostname tanımlamaya GEREK YOK (güvenlik).
+
+  # ─── Grafana — VictoriaMetrics üstünde dashboard ───────────────────────────
+  # Default admin kullanıcısı "admin", şifre GF_ADMIN_PASSWORD env'inden gelir.
+  # Datasource olarak VictoriaMetrics otomatik provision edilir (aşağıdaki ./grafana).
+  grafana:
+    image: grafana/grafana:latest
+    container_name: uat-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: https://uat-kong-grafana.medasista.com
+      # Storage path'ini daha güvenli bir yere al
+      GF_PATHS_DATA: /var/lib/grafana
+      GF_PATHS_LOGS: /var/log/grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - dokploy-network
+      - kong-net
+    depends_on:
+      - victoria-metrics
+
 
 # ─── Volume'lar ───────────────────────────────────────────────────────────────
 volumes:
   kong-postgres-data:
     name: uat-kong-postgres-data-v2
+  victoria-metrics-data:
+    name: uat-victoria-metrics-data
+  grafana-data:
+    name: uat-grafana-data
 
 # ─── Ağlar ────────────────────────────────────────────────────────────────────
 networks:
