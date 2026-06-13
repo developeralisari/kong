@@ -1,5 +1,4 @@
 services:
-
   kong-database:
     image: postgres:${POSTGRES_VERSION}
     container_name: ${KONG_DATABASE_CONTAINER_NAME}
@@ -43,53 +42,60 @@ services:
       KONG_PG_USER: ${KONG_PG_USER}
       KONG_PG_PASSWORD: ${KONG_PG_PASSWORD}
       KONG_PG_DATABASE: ${KONG_PG_DATABASE}
-
       KONG_PROXY_LISTEN: "0.0.0.0:${KONG_PROXY_HTTP_PORT}, 0.0.0.0:${KONG_PROXY_HTTPS_PORT} ssl"
       KONG_ADMIN_LISTEN: "0.0.0.0:${KONG_ADMIN_PORT}"
       KONG_STATUS_LISTEN: "0.0.0.0:${KONG_STATUS_PORT}"
-
       KONG_TRUSTED_IPS: "0.0.0.0/0,::/0"
       KONG_REAL_IP_HEADER: X-Forwarded-For
       KONG_REAL_IP_RECURSIVE: "on"
-
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_LOG_LEVEL: ${KONG_LOG_LEVEL}
-
       KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKER_PROCESSES}
       KONG_NGINX_PROXY_LARGE_CLIENT_HEADER_BUFFERS: "4 32k"
-
       KONG_DNS_ORDER: LAST,SRV,A,CNAME
-
       KONG_PLUGINS: ${KONG_PLUGINS}
-
       KONG_ADMIN_GUI_LISTEN: "0.0.0.0:${KONG_MANAGER_PORT}"
       KONG_ADMIN_GUI_PATH: /
       KONG_ADMIN_GUI_URL: ${KONG_MANAGER_URL}
       KONG_ADMIN_GUI_API_URL: ${KONG_ADMIN_URL}
-
     ports:
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
       - "${KONG_PROXY_HTTPS_PORT}:${KONG_PROXY_HTTPS_PORT}"
-
     depends_on:
       kong-database:
         condition: service_started
       kong-migration:
         condition: service_completed_successfully
-
     healthcheck:
-      test: ["CMD", "kong", "health"]
+      test: [ "CMD", "kong", "health" ]
       interval: 15s
       timeout: 10s
       retries: 5
       start_period: 30s
-
     networks:
       - kong-net
       - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+
+      # Kong Manager UI (Root Path)
+      - "traefik.http.routers.kong-manager.rule=Host(`uat-kong.medasista.com`)"
+      - "traefik.http.routers.kong-manager.entrypoints=web"
+      - "traefik.http.routers.kong-manager.service=kong-manager-svc"
+      - "traefik.http.services.kong-manager-svc.loadbalancer.server.port=18002"
+
+      # Kong Admin API (/api Path + Prefix Stripping)
+      - "traefik.http.routers.kong-admin.rule=Host(`uat-kong.medasista.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.kong-admin.middlewares=strip-api-prefix"
+      - "traefik.http.routers.kong-admin.service=kong-admin-svc"
+      - "traefik.http.services.kong-admin-svc.loadbalancer.server.port=18001"
+
+      # Middleware: Strips /api prefix before forwarding to Kong Admin API
+      - "traefik.http.middlewares.strip-api-prefix.stripprefix.prefixes=/api"
 
   cloudflared:
     image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
@@ -110,7 +116,6 @@ services:
     restart: unless-stopped
     ports:
       - "${VICTORIA_METRICS_PORT}:${VICTORIA_METRICS_PORT}"
-
     command:
       - "--storageDataPath=/storage"
       - "--retentionPeriod=${VICTORIA_METRICS_RETENTION_DAYS}"
@@ -139,7 +144,6 @@ services:
       GF_PATHS_LOGS: /var/log/grafana
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_PORT}"
-
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -149,7 +153,6 @@ services:
       - kong-net
     depends_on:
       - victoria-metrics
-
 
 volumes:
   kong-postgres-data:
@@ -163,7 +166,6 @@ networks:
   kong-net:
     driver: bridge
     name: ${KONG_NETWORK_NAME}
-
   dokploy-network:
     external: true
     name: ${DOKPLOY_NETWORK_NAME}
