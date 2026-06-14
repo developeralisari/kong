@@ -181,13 +181,13 @@ services:
       - "traefik.docker.network=dokploy-network"
       # Backend service: container port 3000.
       - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
-      # Middleware: inject X-Forwarded-Proto=https and X-Forwarded-Host so
-      # Grafana (with GF_SERVER_USE_PROXY_HEADERS=true) sees the original
-      # https scheme and does not 301-loop. Also override any incoming
-      # Host header so Grafana renders the public hostname.
+      # Middleware: inject X-Forwarded-Proto=https so Grafana (with
+      # GF_SERVER_USE_PROXY_HEADERS=true) sees the original https scheme
+      # and does not 301-loop. Traefik already sets Host and X-Forwarded-Host
+      # correctly (scheme-less), so do NOT override them here — overriding
+      # with ${GRAFANA_PUBLIC_URL} (which includes https://) causes an
+      # ERR_TOO_MANY_REDIRECTS loop.
       - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
-      - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Host=${GRAFANA_PUBLIC_URL}"
-      - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.Host=${GRAFANA_PUBLIC_URL}"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
       - "traefik.http.routers.grafana-public.rule=Host(`uat-kong-grafana.medasista.com`)"
       - "traefik.http.routers.grafana-public.entrypoints=web"
