@@ -84,6 +84,28 @@ pre-release). Two known problems on this image:
 Use a release tag (`12.2.9`, `11.6.15`, etc.) and keep the volume on a fresh
 name (`-v2`, `-v3`) when recreating so permission issues do not persist.
 
+## No hard-coded values in compose — everything goes through env
+
+Compose services must reference only env-var placeholders (`${VAR}`).
+Hard-coded values like:
+
+- Container ports: `3000`, `10001:10001`
+- File ownership: `user: "10001:10001"`, `user: "472:472"`
+- Internal paths: `/usr/share/grafana/data`
+- Image build-time UIDs
+
+...must be externalized to `dokploy.md` and consumed as `${ENV_VAR}` in compose.
+Dokploy env panel is the only place where the actual value lives.
+
+Why: Dokploy ignores the env file we keep in the repo. If a value is hard-coded
+in compose, future bumps and platform-specific fixes (e.g. switching to a
+different host UID) require editing compose and re-redeploying. With env,
+you change one Dokploy env var.
+
+Rule of thumb: if a value would change between environments (uat vs prod vs
+laptop), it belongs in env. If it would change between deployments of the
+same env (UID renumbering, port renumbering), it also belongs in env.
+
 ## Kong /metrics is internal only — never suggest external curl
 
 The Kong Prometheus plugin's `/metrics` endpoint is only reachable from

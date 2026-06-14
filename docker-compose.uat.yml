@@ -196,7 +196,7 @@ services:
     container_name: ${LOKI_CONTAINER_NAME}
     restart: unless-stopped
     command: -config.file=/etc/loki/config.yml
-    user: "10001:10001"
+    user: "${LOKI_UID}:${LOKI_GID}"
     ports:
       - "${LOKI_PORT}:${LOKI_CONTAINER_PORT}"
     volumes:
