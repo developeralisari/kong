@@ -152,6 +152,11 @@ services:
       # those data sources anyway (we only have prometheus/VictoriaMetrics),
       # so disable auto-install instead of wrestling with file ownership.
       GF_PLUGIN_AUTO_INSTALL_DISABLED: "true"
+      # Anonymous access only — Cloudflare Access handles authentication,
+      # so disable Grafana's own login form and sign-out menu entirely.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
