@@ -191,6 +191,21 @@ services:
       - "traefik.http.routers.grafana-public.service=grafana-svc"
       - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
 
+  loki:
+    image: grafana/loki:${LOKI_VERSION}
+    container_name: ${LOKI_CONTAINER_NAME}
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yml
+    user: "10001:10001"
+    ports:
+      - "${LOKI_PORT}:${LOKI_CONTAINER_PORT}"
+    volumes:
+      - loki-data:/loki
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+    networks:
+      - kong-net
+      - dokploy-network
+
 volumes:
   kong-postgres-data:
     name: ${KONG_POSTGRES_VOLUME_NAME}
@@ -198,6 +213,8 @@ volumes:
     name: ${VICTORIA_METRICS_VOLUME_NAME}
   grafana-data:
     name: ${GRAFANA_VOLUME_NAME}
+  loki-data:
+    name: ${LOKI_VOLUME_NAME}
 
 networks:
   kong-net:
