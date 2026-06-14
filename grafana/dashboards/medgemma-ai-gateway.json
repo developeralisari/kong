@@ -1,0 +1,635 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "MedGemma 1.5 AI Gateway - token faturalandırma, top consumer, plugin latency, RunPod upstream health. Auto-injected from /var/lib/grafana/dashboards via provisioning.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "medgemma-ai-gateway",
+  "title": "MedGemma AI Gateway — Billing & Observability",
+  "tags": ["kong", "ai-gateway", "medgemma", "billing", "uat"],
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Datasource",
+        "query": "prometheus",
+        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "hide": 0
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "label": "Service",
+        "query": "label_values(kong_request_count, service)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "route",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "label": "Route",
+        "query": "label_values(kong_request_count{service=~\"$service\"}, route)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "consumer",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "label": "Consumer",
+        "query": "label_values(kong_request_count, consumer)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "💰 Faturalandırma (Billing)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 101,
+      "type": "stat",
+      "title": "Toplam Prompt Token (24h)",
+      "description": "Son 24 saatte tüm consumer'lara gönderilen prompt token toplamı. Fatura hesabında kullanılır.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100000 },
+              { "color": "red", "value": 1000000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(kong_ai_llm_usage_prompt_tokens_total{service=~\"$service\"}[24h]))",
+          "legendFormat": "Prompt Tokens"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "stat",
+      "title": "Toplam Completion Token (24h)",
+      "description": "Son 24 saatte tüm consumer'lardan alınan yanıt token toplamı. Completion prompt'tan pahalıdır (genelde 3-4x).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100000 },
+              { "color": "red", "value": 500000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(kong_ai_llm_usage_completion_tokens_total{service=~\"$service\"}[24h]))",
+          "legendFormat": "Completion Tokens"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "stat",
+      "title": "Tahmini Maliyet (24h, USD)",
+      "description": "MedGemma 1.5 vision için RunPod fiyatlandırmasına göre tahmini maliyet. $0.80/1M input + $0.80/1M output (örnek).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(increase(kong_ai_llm_usage_prompt_tokens_total{service=~\"$service\"}[24h])) * 0.0000008) + (sum(increase(kong_ai_llm_usage_completion_tokens_total{service=~\"$service\"}[24h])) * 0.0000008)",
+          "legendFormat": "Cost USD"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "type": "stat",
+      "title": "Aktif Consumer (24h)",
+      "description": "Son 24 saat içinde API çağrısı yapan unique consumer (müşteri) sayısı.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by (consumer) (kong_ai_llm_usage_total_tokens{consumer=~\"$consumer\"}))",
+          "legendFormat": "Active Consumers"
+        }
+      ]
+    },
+    {
+      "id": 110,
+      "type": "timeseries",
+      "title": "Token Tüketimi Akışı (tokens/s, by Type)",
+      "description": "Prompt ve completion token'larının zamana göre akışı. Kümülatif artış maliyet trendini gösterir.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "drawStyle": "line",
+            "stacking": { "mode": "normal" }
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "sum"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(kong_ai_llm_usage_prompt_tokens_total{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "Prompt tokens/s"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(kong_ai_llm_usage_completion_tokens_total{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "Completion tokens/s"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "type": "timeseries",
+      "title": "Kümülatif Token (24h, by Consumer — Top 10)",
+      "description": "En çok token tüketen 10 müşteri. Faturalandırma listesinin anlık görüntüsü.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "drawStyle": "line"
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (consumer) (increase(kong_ai_llm_usage_total_tokens{consumer=~\"$consumer\"}[24h])))",
+          "legendFormat": "{{consumer}}"
+        }
+      ]
+    },
+    {
+      "id": 120,
+      "type": "table",
+      "title": "Top Consumer Sıralaması (24h)",
+      "description": "24 saatlik pencere: her consumer için prompt/completion/total token, request sayısı ve tahmini maliyet.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Total Tokens", "desc": true }],
+        "footer": { "show": true, "fields": ["Total Tokens", "Total Cost (USD)"] }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true, "code": true, "model": true, "route": true, "service": true },
+            "renameByName": {
+              "consumer": "Consumer",
+              "Value #A": "Prompt Tokens",
+              "Value #B": "Completion Tokens",
+              "Value #C": "Total Tokens",
+              "Value #D": "Requests",
+              "Value #E": "Total Cost (USD)"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (consumer) (increase(kong_ai_llm_usage_prompt_tokens_total{consumer=~\"$consumer\"}[24h]))",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (consumer) (increase(kong_ai_llm_usage_completion_tokens_total{consumer=~\"$consumer\"}[24h]))",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (consumer) (increase(kong_ai_llm_usage_total_tokens{consumer=~\"$consumer\"}[24h]))",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (consumer) (increase(kong_ai_llm_usage_requests_total{consumer=~\"$consumer\"}[24h]))",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "refId": "E",
+          "expr": "(sum by (consumer) (increase(kong_ai_llm_usage_prompt_tokens_total{consumer=~\"$consumer\"}[24h])) * 0.0000008) + (sum by (consumer) (increase(kong_ai_llm_usage_completion_tokens_total{consumer=~\"$consumer\"}[24h])) * 0.0000008)",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "📊 Trafik & Latency",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 201,
+      "type": "timeseries",
+      "title": "Request Rate (req/s, by Service)",
+      "description": "Kong üzerinden geçen isteklerin saniye başına sayısı, service bazında.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate(kong_request_count{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 202,
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99 (ms)",
+      "description": "Kong + RunPod toplam yanıt süresi. MedGemma vision analizi için 2-8s beklenir.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "drawStyle": "line" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(kong_latency_ms_bucket{service=~\"$service\",route=~\"$route\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_latency_ms_bucket{service=~\"$service\",route=~\"$route\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_latency_ms_bucket{service=~\"$service\",route=~\"$route\"}[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 203,
+      "type": "timeseries",
+      "title": "Kong Overhead vs Upstream (p95, ms)",
+      "description": "Kong'un kendi işlem süresi vs RunPod GPU yanıt süresi. Aradaki fark Kong plugin zincirinin overhead'idir.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$service\"}[$__rate_interval])))",
+          "legendFormat": "Kong overhead p95"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$service\"}[$__rate_interval])))",
+          "legendFormat": "RunPod upstream p95"
+        }
+      ]
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "🎯 Upstream Health & Errors",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 301,
+      "type": "stat",
+      "title": "RunPod Upstream Healthy",
+      "description": "RunPod MedGemma endpoint'inin sağlık durumu. 1 = UP, 0 = DOWN.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } }
+          ]
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min(kong_upstream_target_health{service=~\"$service\"})",
+          "legendFormat": "Health"
+        }
+      ]
+    },
+    {
+      "id": 302,
+      "type": "timeseries",
+      "title": "Error Rate (5xx, %)",
+      "description": "5xx yanıtların toplam isteğe oranı. Service bazında. RunPod GPU çökerse burada spike görürsün.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 4, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (service) (rate(kong_http_status{service=~\"$service\",code=~\"5..\"}[$__rate_interval])) / sum by (service) (rate(kong_http_status{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}} 5xx %"
+        }
+      ]
+    },
+    {
+      "id": 303,
+      "type": "timeseries",
+      "title": "Status Code Dağılımı (req/s)",
+      "description": "2xx / 3xx / 4xx / 5xx gruplarına göre istek oranı.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 12, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line", "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (code) (rate(kong_http_status{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{code}}"
+        }
+      ]
+    },
+    {
+      "id": 304,
+      "type": "timeseries",
+      "title": "4xx Error Breakdown (req/s, by Code)",
+      "description": "401 (key hatalı), 403 (ACL), 429 (rate limit), 413 (request size) — müşteri tarafı hatalar.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 1, "fillOpacity": 20, "drawStyle": "bars" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (code) (rate(kong_http_status{service=~\"$service\",code=~\"4..\"}[$__rate_interval]))",
+          "legendFormat": "{{code}}"
+        }
+      ]
+    },
+    {
+      "id": 400,
+      "type": "row",
+      "title": "🔌 Plugin & Route Detayı",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 401,
+      "type": "table",
+      "title": "Top Routes (5m, by Total Requests)",
+      "description": "En çok istek alan rotalar, service + total + RPS + 5xx sayısı.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 42 },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Requests", "desc": true }],
+        "footer": { "show": false }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true, "code": true },
+            "renameByName": {
+              "route": "Route",
+              "service": "Service",
+              "Value": "Requests"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (route, service) (increase(kong_request_count{service=~\"$service\"}[5m])))",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 402,
+      "type": "timeseries",
+      "title": "Bandwidth (bytes/s, by Service)",
+      "description": "Kong üzerinden geçen toplam trafik. Medikal görseller Base64 olarak gelir, büyük hacim beklenir.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 42 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate(kong_bandwidth_bytes{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    }
+  ]
+}

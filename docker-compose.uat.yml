@@ -160,6 +160,21 @@ services:
       - kong-net
     depends_on:
       - victoria-metrics
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      # Explicit Traefik service: backend on container port (3000).
+      - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
+      # Middleware: forward original scheme/host so Grafana trusts X-Forwarded-Proto.
+      # This is what breaks the http<->https redirect loop with Cloudflare+Traefik.
+      - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Host=${GRAFANA_PUBLIC_URL}"
+      # Router for the public hostname (websecure entrypoint = TLS terminated).
+      - "traefik.http.routers.grafana-public.rule=Host(`uat-kong-grafana.medasista.com`)"
+      - "traefik.http.routers.grafana-public.entrypoints=websecure"
+      - "traefik.http.routers.grafana-public.tls=true"
+      - "traefik.http.routers.grafana-public.service=grafana-svc"
+      - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
 
 volumes:
   kong-postgres-data:
