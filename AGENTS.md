@@ -70,6 +70,16 @@ domains. Actual Host-based routing is done by Dokploy Traefik from there. Do
 NOT add compose-level Traefik labels for services whose domain is already
 managed by Dokploy — they will collide.
 
+## Cloudflare tunnel is only for the MedAsista team's own access
+
+The tunnel exists so the user (working from home / a non-public Dokploy host)
+can reach Kong Manager, Admin API, and Grafana over a private route. The
+**public customer API** at `uat-api.medasista.com` MUST be exposed via
+Dokploy's "Domains" panel directly — it does NOT go through the tunnel,
+because end customers on the public internet hit Dokploy Traefik directly.
+
+Do not propose adding customer-facing hostnames to the tunnel config.
+
 ## Grafana image version: pin to a release tag, never `latest`
 
 `grafana/grafana:latest` resolves to the `nightly-slim` tag (rolling 12.x
