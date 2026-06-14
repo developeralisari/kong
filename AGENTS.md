@@ -69,3 +69,17 @@ Tunnel's "Published application routes" point to `dokploy-traefik:80` for both
 domains. Actual Host-based routing is done by Dokploy Traefik from there. Do
 NOT add compose-level Traefik labels for services whose domain is already
 managed by Dokploy — they will collide.
+
+## Grafana image version: pin to a release tag, never `latest`
+
+`grafana/grafana:latest` resolves to the `nightly-slim` tag (rolling 12.x
+pre-release). Two known problems on this image:
+
+1. **Permission denied on plugin auto-install** — `plugins-bundled/` ships
+   root-owned, Grafana runs as UID 472, log floods with `unlinkat ...:
+   permission denied` errors.
+2. **Breaking changes between nightly builds** — dashboards and config that
+   worked yesterday may break tomorrow.
+
+Use a release tag (`12.2.9`, `11.6.15`, etc.) and keep the volume on a fresh
+name (`-v2`, `-v3`) when recreating so permission issues do not persist.
