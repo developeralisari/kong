@@ -160,11 +160,25 @@ services:
       - kong-net
     depends_on:
       - victoria-metrics
-    # NOTE: Grafana is exposed via Kong proxy (uat-kong.medasista.com/grafana)
-    # rather than a direct public hostname, to avoid the Cloudflare/Dokploy
-    # Traefik X-Forwarded-Proto redirect loop. Dokploy still injects its own
-    # Traefik router via the Domains panel, but Cloudflare tunnel no longer
-    # routes traffic to it (GRAFANA_PUBLIC_URL points at the Kong subpath).
+    # Same Traefik pattern as the kong service: explicit labels that match
+    # what we tested working yesterday. Dokploy's auto-injected labels
+    # would otherwise not include the X-Forwarded-* headers and Grafana
+    # loops on the http->https redirect.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      # Backend service: container port 3000.
+      - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
+      # Middleware: inject X-Forwarded-Proto and X-Forwarded-Host so Grafana
+      # trusts the original https scheme from Cloudflare.
+      - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Host=${GRAFANA_PUBLIC_URL}"
+      # Router for the public hostname, websecure entrypoint (TLS terminated by Dokploy Let's Encrypt).
+      - "traefik.http.routers.grafana-public.rule=Host(`uat-kong-grafana.medasista.com`)"
+      - "traefik.http.routers.grafana-public.entrypoints=websecure"
+      - "traefik.http.routers.grafana-public.tls=true"
+      - "traefik.http.routers.grafana-public.service=grafana-svc"
+      - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
 
 volumes:
   kong-postgres-data:
