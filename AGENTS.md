@@ -106,6 +106,14 @@ Rule of thumb: if a value would change between environments (uat vs prod vs
 laptop), it belongs in env. If it would change between deployments of the
 same env (UID renumbering, port renumbering), it also belongs in env.
 
+## User / Group IDs: one variable, not two
+
+When the user and group of a container are the same number (typical for
+single-UID images like Loki 10001:10001 or Grafana 472:472), use a single
+`SERVICE_UID` env var and reference it twice in compose as
+`${SERVICE_UID}:${SERVICE_UID}`. Do not create a separate SERVICE_GID
+that holds the same value — one source of truth.
+
 ## Kong /metrics is internal only — never suggest external curl
 
 The Kong Prometheus plugin's `/metrics` endpoint is only reachable from
