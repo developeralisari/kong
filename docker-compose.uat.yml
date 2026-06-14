@@ -155,8 +155,11 @@ services:
       # Anonymous access only — Cloudflare Access handles authentication,
       # so disable Grafana's own login form and sign-out menu entirely.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_NAME: ${GF_AUTH_ANONYMOUS_ORG_NAME}
+      GF_AUTH_ANONYMOUS_ORG_ROLE: ${GF_AUTH_ANONYMOUS_ORG_ROLE}
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
+      GF_AUTH_BASIC_ENABLED: ${GF_AUTH_BASIC_ENABLED}
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
