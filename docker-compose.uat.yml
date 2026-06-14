@@ -142,15 +142,16 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL}
       GF_PATHS_DATA: /var/lib/grafana
       GF_PATHS_LOGS: /var/log/grafana
-      # Make Grafana listen on the same port Dokploy Traefik expects (18101).
-      # Default is 3000; without this, Dokploy -> uat-grafana:18101 hits nothing.
-      GF_SERVER_HTTP_PORT: ${GRAFANA_PORT}
+      # Make Grafana listen on its internal port (3000 by default).
+      # Dokploy Traefik routes to host port GRAFANA_PORT and host->container
+      # mapping (GRAFANA_PORT:GRAFANA_CONTAINER_PORT) forwards into 3000.
+      GF_SERVER_HTTP_PORT: ${GRAFANA_CONTAINER_PORT}
       # Trust upstream proxy headers (Cloudflare + Dokploy Traefik) so Grafana
       # does not 301 from https to http when scheme is stripped by the tunnel.
       GF_SERVER_USE_PROXY_HEADERS: "true"
       GF_SERVER_FORWARD_HEADERS: "true"
     ports:
-      - "${GRAFANA_PORT}:${GRAFANA_PORT}"
+      - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro

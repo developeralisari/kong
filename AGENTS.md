@@ -2,18 +2,18 @@
 
 ## Dokploy + custom-port services gotcha
 
-When a service uses a non-default container port (e.g. Grafana on host 18101
-instead of default 3000), the **Dokploy Domains panel** records the host port
-and Traefik forwards to that port on the container. Two things must match:
+Never hard-code a default container port in compose (e.g. `3000` for Grafana).
+Always externalize it as an env var so future Grafana image bumps that change
+the default do not silently break the route.
 
-1. Compose `ports:` mapping must expose that port on the host.
-2. The process **inside the container** must actually listen on that port.
+Canonical pattern (Grafana):
+- `.env`: `GRAFANA_PORT=18101` (host), `GRAFANA_CONTAINER_PORT=3000` (container)
+- compose ports: `"${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"`
+- compose env: `GF_SERVER_HTTP_PORT: ${GRAFANA_CONTAINER_PORT}`
+- Dokploy Domains panel records host port → Traefik → host:port → container:3000
 
-For Grafana that means adding `GF_SERVER_HTTP_PORT: ${GRAFANA_PORT}` to env.
-Without it Grafana keeps listening on 3000, Dokploy Traefik hits 18101, gets
-"Bad Request" (not 502 / not redirect loop — easy to misdiagnose).
-
-Same trap applies to any service using a non-default internal port.
+If `GRAFANA_CONTAINER_PORT` is not in `.env`, Dokploy fails to expand the
+variable and the container port mapping breaks. Always add both.
 
 ## Cloudflare tunnel + Dokploy Traefik + Grafana redirect loop
 
