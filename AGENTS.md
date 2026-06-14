@@ -83,3 +83,15 @@ pre-release). Two known problems on this image:
 
 Use a release tag (`12.2.9`, `11.6.15`, etc.) and keep the volume on a fresh
 name (`-v2`, `-v3`) when recreating so permission issues do not persist.
+
+## Kong /metrics is internal only — never suggest external curl
+
+The Kong Prometheus plugin's `/metrics` endpoint is only reachable from
+the kong-net docker network. It is NOT behind Cloudflare Access and is
+not designed to be hit from a host browser or curl.
+
+To verify the scrape pipeline is alive, always go through Grafana:
+`https://uat-kong-grafana.medasista.com` -> Explore -> VictoriaMetrics
+datasource -> query `kong_request_count`. If a graph renders, the whole
+Kong -> VM -> Grafana chain is working. Never propose `curl
+https://uat-kong.medasista.com/metrics` as a verification step.
