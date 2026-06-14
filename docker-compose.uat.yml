@@ -142,6 +142,10 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL}
       GF_PATHS_DATA: /var/lib/grafana
       GF_PATHS_LOGS: /var/log/grafana
+      # Trust upstream proxy headers (Cloudflare + Dokploy Traefik) so Grafana
+      # does not 301 from https to http when scheme is stripped by the tunnel.
+      GF_SERVER_USE_PROXY_HEADERS: "true"
+      GF_SERVER_FORWARD_HEADERS: "true"
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_PORT}"
     volumes:
