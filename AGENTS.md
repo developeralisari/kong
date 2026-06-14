@@ -1,5 +1,20 @@
 # MedAsista Kong — Project Notes
 
+## dokploy.md is the live env — MUST be synced to Dokploy manually
+
+`dokploy.md` is **not** auto-loaded. It is the source of truth for the Dokploy
+"Environment" panel. Every time we add / change / remove a variable there,
+**the user must paste the diff into Dokploy UI** before the next redeploy,
+otherwise compose still expands the old env and the change has no effect.
+
+When editing `dokploy.md`, the assistant MUST:
+1. Show the exact lines that changed (before -> after) in the response.
+2. Call it out explicitly: "You need to update Dokploy env vars manually."
+3. Never claim "done" without flagging the Dokploy sync.
+
+Symptom of missed sync: container logs show old env, volume name mismatch,
+port still old, `env | grep` inside container returns the previous value.
+
 ## Dokploy + custom-port services gotcha
 
 Never hard-code a default container port in compose (e.g. `3000` for Grafana).

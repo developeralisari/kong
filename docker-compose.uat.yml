@@ -155,6 +155,13 @@ services:
       # those data sources anyway (we only have prometheus/VictoriaMetrics),
       # so disable auto-install instead of wrestling with file ownership.
       GF_PLUGIN_AUTO_INSTALL_DISABLED: "true"
+      # Cloudflare Access is the auth layer in front of Grafana. Disable the
+      # in-app login form and auto-grant Admin to any request that reaches
+      # Grafana (Cloudflare Access already blocked unauthenticated users).
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_NAME: "MedAsista"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_BASIC_ENABLED: "false"
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
