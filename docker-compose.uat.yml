@@ -149,6 +149,12 @@ services:
       # Trust the X-Forwarded-Proto header from Cloudflare/Cloudflared + Dokploy
       # Traefik so Grafana does not 301 from http to https (redirect loop).
       GF_SERVER_USE_PROXY_HEADERS: "true"
+      # Skip the default plugin auto-installer. The bundled image ships with
+      # elasticsearch/zipkin/etc plugin metadata owned by root, but Grafana
+      # runs as UID 472 and cannot unlinkat() them on startup. We don't use
+      # those data sources anyway (we only have prometheus/VictoriaMetrics),
+      # so disable auto-install instead of wrestling with file ownership.
+      GF_PLUGIN_AUTO_INSTALL_DISABLED: "true"
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
