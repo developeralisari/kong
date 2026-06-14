@@ -146,10 +146,9 @@ services:
       # Dokploy Traefik routes to host port GRAFANA_PORT and host->container
       # mapping (GRAFANA_PORT:GRAFANA_CONTAINER_PORT) forwards into 3000.
       GF_SERVER_HTTP_PORT: ${GRAFANA_CONTAINER_PORT}
-      # Trust upstream proxy headers (Cloudflare + Dokploy Traefik) so Grafana
-      # does not 301 from https to http when scheme is stripped by the tunnel.
+      # Trust the X-Forwarded-Proto header from Cloudflare/Cloudflared + Dokploy
+      # Traefik so Grafana does not 301 from http to https (redirect loop).
       GF_SERVER_USE_PROXY_HEADERS: "true"
-      GF_SERVER_FORWARD_HEADERS: "true"
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
