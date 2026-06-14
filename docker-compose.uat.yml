@@ -157,6 +157,7 @@ services:
       # Cloudflare Access is the auth layer in front of Grafana. Disable the
       # in-app login form and auto-grant Admin to any request that reaches
       # Grafana (Cloudflare Access already blocked unauthenticated users).
+      GF_AUTH_PROVIDERS: "anonymous,basic"
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_NAME: "MedAsista"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
