@@ -178,27 +178,39 @@ services:
       - kong-net
     depends_on:
       - victoria-metrics
-    # Same Traefik pattern as the kong service: explicit labels matching the
-    # shape that worked yesterday. Use the 'web' entrypoint (no TLS, no
-    # websecure router) so Grafana receives plain HTTP and the X-Forwarded-*
-    # middleware can mark it as https for redirect trust.
+    # EXACT SAME PATTERN AS KONG: Cloudflare Access is enabled on this domain,
+    # so Cloudflare handles TLS termination and authentication. Cloudflare Tunnel
+    # sends plain HTTP to Traefik on the 'web' entrypoint. We inject
+    # X-Forwarded-Proto=https so Grafana sees the original scheme and does not
+    # 301-loop. NO websecure router, NO redirect-to-https middleware.
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
-      # Backend service: container port 3000.
-      - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
-      # Middleware: inject X-Forwarded-Proto=https so Grafana (with
-      # GF_SERVER_USE_PROXY_HEADERS=true) sees the original https scheme
-      # and does not 301-loop. Traefik already sets Host and X-Forwarded-Host
-      # correctly (scheme-less), so do NOT override them here — overriding
-      # with ${GRAFANA_PUBLIC_URL} (which includes https://) causes an
-      # ERR_TOO_MANY_REDIRECTS loop.
+      # Inject X-Forwarded-Proto=https so Grafana (with GF_SERVER_USE_PROXY_HEADERS=true)
+      # sees the original https scheme and does not 301-loop. Same pattern as Kong.
       - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
+      # This is the ONLY router we need — Cloudflare Tunnel sends HTTP here.
       - "traefik.http.routers.grafana-public.rule=Host(`uat-kong-grafana.medasista.com`)"
       - "traefik.http.routers.grafana-public.entrypoints=web"
       - "traefik.http.routers.grafana-public.service=grafana-svc"
       - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
+      # HIGH PRIORITY: Override Dokploy's auto-generated routers completely.
+      # Dokploy UI's 'Domains' panel creates medasista-kong-kek2tz-72-web and
+      # medasista-kong-kek2tz-72-websecure with redirect-to-https@file middleware.
+      # We override them here to use our proxy-headers middleware instead, breaking
+      # the HTTP->HTTPS redirect loop.
+      - "traefik.http.routers.grafana-public.priority=1000"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-web.rule=Host(`uat-kong-grafana.medasista.com`)"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-web.entrypoints=web"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-web.service=grafana-svc"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-web.middlewares=grafana-proxy-headers@docker"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.rule=Host(`uat-kong-grafana.medasista.com`)"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.entrypoints=websecure"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.service=grafana-svc"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.middlewares=grafana-proxy-headers@docker"
+      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
 
   loki:
     image: grafana/loki:${LOKI_VERSION}
@@ -269,29 +281,50 @@ services:
       # Trust X-Forwarded-* headers from Traefik. Spring Boot default is NONE,
       # which means the app sees the real request scheme (http, after Traefik
       # terminates the TLS upstream) and 301-redirects to https -> Cloudflare
-      # re-strips -> ERR_TOO_MANY_REDIRECTS. NATIVE configures Tomcat's built-in
-      # RemoteIpValve to honor X-Forwarded-Proto at the container level — the
-      # most direct path for embedded-Tomcat Spring Boot apps like kafka-ui.
+      # re-strips -> ERR_TOO_MANY_REDIRECTS. FRAMEWORK configures Spring WebFlux's
+      # ForwardedHeaderTransformer to honor X-Forwarded-Proto at the container
+      # level — kafka-ui runs on Netty (not Tomcat), so NATIVE does NOT work;
+      # FRAMEWORK is required for reactive/Netty Spring Boot apps.
       SERVER_FORWARD_HEADERS_STRATEGY: ${KAFKA_UI_FORWARD_HEADERS_STRATEGY}
     depends_on:
       - kafka
     networks:
       - dokploy-network
       - kong-net
+    # EXACT SAME PATTERN AS KONG: Cloudflare Access is enabled on this domain,
+    # so Cloudflare handles TLS termination and authentication. Cloudflare Tunnel
+    # sends plain HTTP to Traefik on the 'web' entrypoint. We inject
+    # X-Forwarded-Proto=https so kafka-ui sees the original scheme and does not
+    # 301-loop. NO websecure router, NO redirect-to-https middleware.
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
-      - "traefik.http.services.kafka-ui-svc.loadbalancer.server.port=${KAFKA_UI_CONTAINER_PORT}"
       # Inject X-Forwarded-Proto=https so kafka-ui (with FRAMEWORK forward
-      # headers strategy) sees the original https scheme and does not 301-loop.
-      # Same pattern as the Grafana fix (commit de9a54b): Traefik sets the
-      # header at the edge, the app trusts it.
+      # headers strategy via Spring WebFlux ForwardedHeaderTransformer) sees
+      # the original https scheme and does not 301-loop. Same pattern as Kong.
       - "traefik.http.middlewares.kafka-ui-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
+      # This is the ONLY router we need — Cloudflare Tunnel sends HTTP here.
       - "traefik.http.routers.kafka-ui-public.rule=Host(`uat-kong-kafka.medasista.com`)"
       - "traefik.http.routers.kafka-ui-public.entrypoints=web"
       - "traefik.http.routers.kafka-ui-public.service=kafka-ui-svc"
       - "traefik.http.routers.kafka-ui-public.middlewares=kafka-ui-proxy-headers@docker"
+      # HIGH PRIORITY: Override Dokploy's auto-generated routers completely.
+      # Dokploy UI's 'Domains' panel creates medasista-kong-kek2tz-75-web and
+      # medasista-kong-kek2tz-75-websecure with redirect-to-https@file middleware.
+      # We override them here to use our proxy-headers middleware instead, breaking
+      # the HTTP->HTTPS redirect loop.
+      - "traefik.http.routers.kafka-ui-public.priority=1000"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-web.rule=Host(`uat-kong-kafka.medasista.com`)"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-web.entrypoints=web"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-web.service=kafka-ui-svc"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-web.middlewares=kafka-ui-proxy-headers@docker"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.rule=Host(`uat-kong-kafka.medasista.com`)"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.entrypoints=websecure"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.service=kafka-ui-svc"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.middlewares=kafka-ui-proxy-headers@docker"
+      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kafka-ui-svc.loadbalancer.server.port=${KAFKA_UI_CONTAINER_PORT}"
 
 volumes:
   kong-postgres-data:
