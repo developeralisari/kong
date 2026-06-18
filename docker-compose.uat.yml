@@ -103,6 +103,22 @@ services:
       # Middleware: Strips /api prefix before forwarding to Kong Admin API
       - "traefik.http.middlewares.strip-api-prefix.stripprefix.prefixes=/api"
 
+      # HIGH PRIORITY: Override Dokploy's auto-generated routers completely.
+      # Dokploy UI's 'Domains' panel creates medasista-kong-kek2tz-66-web and
+      # medasista-kong-kek2tz-66-websecure with redirect-to-https@file middleware.
+      # We override them here to use our proxy-headers middleware instead, breaking
+      # the HTTP->HTTPS redirect loop.
+      - "traefik.http.routers.kong-manager.priority=1000"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-web.rule=Host(`uat-kong.medasista.com`)"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-web.entrypoints=web"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-web.service=kong-manager-svc"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-web.middlewares=kong-proxy-headers@docker"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.rule=Host(`uat-kong.medasista.com`)"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.entrypoints=websecure"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.service=kong-manager-svc"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.middlewares=kong-proxy-headers@docker"
+      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.tls.certresolver=letsencrypt"
+
   cloudflared:
     image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
     container_name: ${CLOUDFLARED_CONTAINER_NAME}
