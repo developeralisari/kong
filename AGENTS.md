@@ -30,23 +30,41 @@ Canonical pattern (Grafana):
 If `GRAFANA_CONTAINER_PORT` is not in `.env`, Dokploy fails to expand the
 variable and the container port mapping breaks. Always add both.
 
-## Cloudflare tunnel + Dokploy Traefik + Grafana redirect loop
+## Cloudflare tunnel + Dokploy Traefik + backend redirect loop (general rule)
 
-Symptom: `ERR_TOO_MANY_REDIRECTS` on `https://uat-kong-grafana.medasista.com`.
+Symptom: `ERR_TOO_MANY_REDIRECTS` on any `*.medasista.com` hostname routed through
+the Cloudflare tunnel — affects Grafana today, affected Kafka UI when first
+deployed, will hit any future public service that does scheme-aware redirects.
 
 Cause: Cloudflare tunnel delivers HTTP to Dokploy Traefik; Traefik's websecure
-router terminates TLS with Let's Encrypt and forwards to Grafana as HTTP; Grafana
-sees scheme=http and 301-redirects to its `GF_SERVER_ROOT_URL` (https), browser
-follows, Cloudflare re-strips to http → loop.
-
-Fix: env must include:
-```
-GF_SERVER_USE_PROXY_HEADERS: "true"
-GF_SERVER_FORWARD_HEADERS: "true"
-```
+router terminates TLS with Let's Encrypt and forwards to the backend as HTTP;
+the backend sees scheme=http and 301-redirects to its public URL (https), the
+browser follows, Cloudflare re-strips to http → loop.
 
 Cloudflare SSL/TLS mode must be `Full` (not Flexible). Flexible will not save
 you — same loop with extra Cloudflare hop.
+
+Canonical fix — apply this pattern from day one to ANY new public-facing service:
+
+1. **Traefik middleware** that injects `X-Forwarded-Proto=https`:
+   ```
+   traefik.http.middlewares.<name>-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https
+   ```
+
+2. **Router** attaches that middleware and uses the `web` entrypoint (plain HTTP):
+   ```
+   traefik.http.routers.<name>-public.entrypoints=web
+   traefik.http.routers.<name>-public.middlewares=<name>-proxy-headers@docker
+   ```
+
+3. **Backend env** to trust the proxy headers (varies by framework):
+   - Grafana:  `GF_SERVER_USE_PROXY_HEADERS: "true"` + `GF_SERVER_FORWARD_HEADERS: "true"`
+   - Spring Boot (Kafka UI, future Java apps): `SERVER_FORWARD_HEADERS_STRATEGY: framework`
+
+If a backend uses a different mechanism (e.g. flag, runtime config), find and
+set the equivalent. Skipping this when copying labels from another service is
+the most common cause of this bug — see kafka-ui history for the canonical
+regression.
 
 ## VictoriaMetrics scrape config does not interpolate env vars
 
@@ -135,3 +153,20 @@ To verify the scrape pipeline is alive, always go through Grafana:
 datasource -> query `kong_request_count`. If a graph renders, the whole
 Kong -> VM -> Grafana chain is working. Never propose `curl
 https://uat-kong.medasista.com/metrics` as a verification step.
+
+## Commit and push policy
+
+The assistant is authorized to run `git commit` and `git push` on the
+`uat` branch without explicit per-action approval from the user. Edit
+the working tree, stage, commit with a clear conventional-commit message,
+push. The user reviews `git log` and the live Dokploy env at their own
+pace.
+
+Still requires explicit confirmation:
+- `git push --force` / `--force-with-lease` (rewrites shared history)
+- `git reset --hard` to a non-HEAD commit
+- Anything that drops commits other people may already have pulled
+- Deleting branches that are not fully merged
+
+When in doubt about a destructive op, ask once briefly with the proposed
+command and a one-line "why".
