@@ -82,15 +82,21 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
 
+      # Inject X-Forwarded-Proto=https so Kong (which already trusts forwarded
+      # headers via KONG_TRUSTED_IPS=0.0.0.0/0) sees the original https scheme
+      # and does not 301-loop. Same pattern as Grafana + kafka-ui.
+      - "traefik.http.middlewares.kong-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+
       # Kong Manager UI (Root Path)
       - "traefik.http.routers.kong-manager.rule=Host(`uat-kong.medasista.com`)"
       - "traefik.http.routers.kong-manager.entrypoints=web"
       - "traefik.http.routers.kong-manager.service=kong-manager-svc"
+      - "traefik.http.routers.kong-manager.middlewares=kong-proxy-headers@docker"
       - "traefik.http.services.kong-manager-svc.loadbalancer.server.port=18002"
 
       # Kong Admin API (/api Path + Prefix Stripping)
       - "traefik.http.routers.kong-admin.rule=Host(`uat-kong.medasista.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.kong-admin.middlewares=strip-api-prefix"
+      - "traefik.http.routers.kong-admin.middlewares=strip-api-prefix,kong-proxy-headers"
       - "traefik.http.routers.kong-admin.service=kong-admin-svc"
       - "traefik.http.services.kong-admin-svc.loadbalancer.server.port=18001"
 
