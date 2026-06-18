@@ -59,7 +59,10 @@ Canonical fix — apply this pattern from day one to ANY new public-facing servi
 
 3. **Backend env** to trust the proxy headers (varies by framework):
    - Grafana:  `GF_SERVER_USE_PROXY_HEADERS: "true"` + `GF_SERVER_FORWARD_HEADERS: "true"`
-   - Spring Boot (Kafka UI, future Java apps): `SERVER_FORWARD_HEADERS_STRATEGY: framework`
+   - Spring Boot (Kafka UI, future Java apps): `SERVER_FORWARD_HEADERS_STRATEGY: native`
+     (NATIVE uses Tomcat's RemoteIpValve directly — most reliable for embedded
+     Tomcat apps. FRAMEWORK also works but goes through Spring's filter layer
+     and has more edge cases.)
 
 If a backend uses a different mechanism (e.g. flag, runtime config), find and
 set the equivalent. Skipping this when copying labels from another service is

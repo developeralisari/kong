@@ -269,8 +269,9 @@ services:
       # Trust X-Forwarded-* headers from Traefik. Spring Boot default is NONE,
       # which means the app sees the real request scheme (http, after Traefik
       # terminates the TLS upstream) and 301-redirects to https -> Cloudflare
-      # re-strips -> ERR_TOO_MANY_REDIRECTS. FRAMEWORK makes Spring MVC honor
-      # X-Forwarded-Proto and skip the redirect.
+      # re-strips -> ERR_TOO_MANY_REDIRECTS. NATIVE configures Tomcat's built-in
+      # RemoteIpValve to honor X-Forwarded-Proto at the container level — the
+      # most direct path for embedded-Tomcat Spring Boot apps like kafka-ui.
       SERVER_FORWARD_HEADERS_STRATEGY: ${KAFKA_UI_FORWARD_HEADERS_STRATEGY}
     depends_on:
       - kafka
