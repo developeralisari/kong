@@ -82,42 +82,20 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
 
-      # Inject X-Forwarded-Proto=https so Kong (which already trusts forwarded
-      # headers via KONG_TRUSTED_IPS=0.0.0.0/0) sees the original https scheme
-      # and does not 301-loop. Same pattern as Grafana + kafka-ui.
-      - "traefik.http.middlewares.kong-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
-
       # Kong Manager UI (Root Path)
       - "traefik.http.routers.kong-manager.rule=Host(`uat-kong.medasista.com`)"
       - "traefik.http.routers.kong-manager.entrypoints=web"
       - "traefik.http.routers.kong-manager.service=kong-manager-svc"
-      - "traefik.http.routers.kong-manager.middlewares=kong-proxy-headers@docker"
       - "traefik.http.services.kong-manager-svc.loadbalancer.server.port=18002"
 
       # Kong Admin API (/api Path + Prefix Stripping)
       - "traefik.http.routers.kong-admin.rule=Host(`uat-kong.medasista.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.kong-admin.middlewares=strip-api-prefix,kong-proxy-headers"
+      - "traefik.http.routers.kong-admin.middlewares=strip-api-prefix"
       - "traefik.http.routers.kong-admin.service=kong-admin-svc"
       - "traefik.http.services.kong-admin-svc.loadbalancer.server.port=18001"
 
       # Middleware: Strips /api prefix before forwarding to Kong Admin API
       - "traefik.http.middlewares.strip-api-prefix.stripprefix.prefixes=/api"
-
-      # HIGH PRIORITY: Override Dokploy's auto-generated routers completely.
-      # Dokploy UI's 'Domains' panel creates medasista-kong-kek2tz-66-web and
-      # medasista-kong-kek2tz-66-websecure with redirect-to-https@file middleware.
-      # We override them here to use our proxy-headers middleware instead, breaking
-      # the HTTP->HTTPS redirect loop.
-      - "traefik.http.routers.kong-manager.priority=1000"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-web.rule=Host(`uat-kong.medasista.com`)"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-web.entrypoints=web"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-web.service=kong-manager-svc"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-web.middlewares=kong-proxy-headers@docker"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.rule=Host(`uat-kong.medasista.com`)"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.entrypoints=websecure"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.service=kong-manager-svc"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.middlewares=kong-proxy-headers@docker"
-      - "traefik.http.routers.medasista-kong-kek2tz-66-websecure.tls.certresolver=letsencrypt"
 
   cloudflared:
     image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
@@ -202,31 +180,17 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
-      # Inject X-Forwarded-Proto=https so Grafana (with GF_SERVER_USE_PROXY_HEADERS=true)
-      # sees the original https scheme and does not 301-loop. Same pattern as Kong.
+      # Backend service: container port 3000.
+      - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
+      # Middleware: inject X-Forwarded-Proto=https so Grafana (with
+      # GF_SERVER_USE_PROXY_HEADERS=true) sees the original https scheme
+      # and does not 301-loop.
       - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
-      # This is the ONLY router we need — Cloudflare Tunnel sends HTTP here.
       - "traefik.http.routers.grafana-public.rule=Host(`uat-kong-grafana.medasista.com`)"
       - "traefik.http.routers.grafana-public.entrypoints=web"
       - "traefik.http.routers.grafana-public.service=grafana-svc"
       - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
-      # HIGH PRIORITY: Override Dokploy's auto-generated routers completely.
-      # Dokploy UI's 'Domains' panel creates medasista-kong-kek2tz-72-web and
-      # medasista-kong-kek2tz-72-websecure with redirect-to-https@file middleware.
-      # We override them here to use our proxy-headers middleware instead, breaking
-      # the HTTP->HTTPS redirect loop.
-      - "traefik.http.routers.grafana-public.priority=1000"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-web.rule=Host(`uat-kong-grafana.medasista.com`)"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-web.entrypoints=web"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-web.service=grafana-svc"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-web.middlewares=grafana-proxy-headers@docker"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.rule=Host(`uat-kong-grafana.medasista.com`)"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.entrypoints=websecure"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.service=grafana-svc"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.middlewares=grafana-proxy-headers@docker"
-      - "traefik.http.routers.medasista-kong-kek2tz-72-websecure.tls.certresolver=letsencrypt"
-      - "traefik.http.services.grafana-svc.loadbalancer.server.port=${GRAFANA_CONTAINER_PORT}"
 
   loki:
     image: grafana/loki:${LOKI_VERSION}
@@ -315,32 +279,17 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
-      # Inject X-Forwarded-Proto=https so kafka-ui (with FRAMEWORK forward
-      # headers strategy via Spring WebFlux ForwardedHeaderTransformer) sees
-      # the original https scheme and does not 301-loop. Same pattern as Kong.
+      # Backend service: container port 8080.
+      - "traefik.http.services.kafka-ui-svc.loadbalancer.server.port=${KAFKA_UI_CONTAINER_PORT}"
+      # Middleware: inject X-Forwarded-Proto=https so kafka-ui (with FRAMEWORK
+      # forward headers strategy via Spring WebFlux ForwardedHeaderTransformer)
+      # sees the original https scheme and does not 301-loop.
       - "traefik.http.middlewares.kafka-ui-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
-      # This is the ONLY router we need — Cloudflare Tunnel sends HTTP here.
       - "traefik.http.routers.kafka-ui-public.rule=Host(`uat-kong-kafka.medasista.com`)"
       - "traefik.http.routers.kafka-ui-public.entrypoints=web"
       - "traefik.http.routers.kafka-ui-public.service=kafka-ui-svc"
       - "traefik.http.routers.kafka-ui-public.middlewares=kafka-ui-proxy-headers@docker"
-      # HIGH PRIORITY: Override Dokploy's auto-generated routers completely.
-      # Dokploy UI's 'Domains' panel creates medasista-kong-kek2tz-75-web and
-      # medasista-kong-kek2tz-75-websecure with redirect-to-https@file middleware.
-      # We override them here to use our proxy-headers middleware instead, breaking
-      # the HTTP->HTTPS redirect loop.
-      - "traefik.http.routers.kafka-ui-public.priority=1000"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-web.rule=Host(`uat-kong-kafka.medasista.com`)"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-web.entrypoints=web"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-web.service=kafka-ui-svc"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-web.middlewares=kafka-ui-proxy-headers@docker"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.rule=Host(`uat-kong-kafka.medasista.com`)"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.entrypoints=websecure"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.service=kafka-ui-svc"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.middlewares=kafka-ui-proxy-headers@docker"
-      - "traefik.http.routers.medasista-kong-kek2tz-75-websecure.tls.certresolver=letsencrypt"
-      - "traefik.http.services.kafka-ui-svc.loadbalancer.server.port=${KAFKA_UI_CONTAINER_PORT}"
 
 volumes:
   kong-postgres-data:
