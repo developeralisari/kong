@@ -112,6 +112,7 @@ services:
       - "traefik.http.routers.kong-proxy.rule=Host(`uat-api.medasista.com`)"
       - "traefik.http.routers.kong-proxy.entrypoints=web"
       - "traefik.http.routers.kong-proxy.service=kong-proxy-svc"
+      - "traefik.http.routers.kong-proxy.priority=1000"
       - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=18000"
       - "traefik.http.services.kong-proxy-svc.loadbalancer.passhostheader=true"
       # Middleware: X-Forwarded-Proto=https ekle (Kong HTTPS gordugunu sansin)
