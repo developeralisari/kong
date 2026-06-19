@@ -107,24 +107,29 @@ services:
       # ═══════════════════════════════════════════════════════════════
       # Kong Proxy (LLM API) - uat-api.medasista.com [END-TO-END HTTPS]
       # Akis: Client -> HTTPS -> Cloudflare (TLS terminate) -> Cloudflared (HTTP)
-      #       -> Traefik (web entrypoint, HTTP) -> Kong:18443 (HTTPS)
+      #       -> Traefik (websecure entrypoint, HTTPS) -> Kong:18443 (HTTPS)
       # Traefik Kong'un 18443 portuna HTTPS ile baglanir.
-      # Kong self-signed sertifika kullandigi icin insecureskipverify=true.
+      # Kong self-signed sertifka kullandigi icin insecureskipverify=true.
       # ═══════════════════════════════════════════════════════════════
-      - "traefik.http.routers.kong-proxy.rule=Host(`uat-api.medasista.com`)"
-      - "traefik.http.routers.kong-proxy.entrypoints=web"
-      - "traefik.http.routers.kong-proxy.service=kong-proxy-svc"
-      - "traefik.http.routers.kong-proxy.priority=1000"
-      # Backend: Kong HTTPS port (18443), Traefik HTTPS scheme kullanir
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=18443"
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.scheme=https"
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.serverstransport=kong-backend-https@docker"
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.passhostheader=true"
+      # HTTP -> HTTPS redirect
+      - "traefik.http.routers.kong-api-web.rule=Host(`uat-api.medasista.com`)"
+      - "traefik.http.routers.kong-api-web.entrypoints=web"
+      - "traefik.http.routers.kong-api-web.middlewares=redirect-to-https@file"
+      # HTTPS router (websecure entrypoint)
+      - "traefik.http.routers.kong-api-websecure.rule=Host(`uat-api.medasista.com`)"
+      - "traefik.http.routers.kong-api-websecure.entrypoints=websecure"
+      - "traefik.http.routers.kong-api-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.kong-api-websecure.service=kong-api-svc"
+      - "traefik.http.routers.kong-api-websecure.middlewares=kong-api-headers@docker"
+      # Backend service: Kong HTTPS port (18443)
+      - "traefik.http.services.kong-api-svc.loadbalancer.server.port=18443"
+      - "traefik.http.services.kong-api-svc.loadbalancer.server.scheme=https"
+      - "traefik.http.services.kong-api-svc.loadbalancer.serverstransport=kong-api-https@docker"
+      - "traefik.http.services.kong-api-svc.loadbalancer.passhostheader=true"
       # Serverstransport: Kong'un self-signed sertifikasini dogrulamadan kabul et
-      - "traefik.http.serverstransports.kong-backend-https.insecureskipverify=true"
-      # Middleware: X-Forwarded-Proto=https ekle (Kong orijinal istegin HTTPS oldugunu bilsin)
-      - "traefik.http.middlewares.kong-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
-      - "traefik.http.routers.kong-proxy.middlewares=kong-proxy-headers@docker"
+      - "traefik.http.serverstransports.kong-api-https.insecureskipverify=true"
+      # Middleware: X-Forwarded-Proto=https ekle
+      - "traefik.http.middlewares.kong-api-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
 
   cloudflared:
     image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
