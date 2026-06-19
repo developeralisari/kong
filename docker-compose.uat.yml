@@ -97,6 +97,20 @@ services:
       # Middleware: Strips /api prefix before forwarding to Kong Admin API
       - "traefik.http.middlewares.strip-api-prefix.stripprefix.prefixes=/api"
 
+      # ═══════════════════════════════════════════════════════════════
+      # Kong Proxy (LLM API) - uat-api.medasista.com
+      # Cloudflare TLS terminate eder, Cloudflared duz HTTP gonderir.
+      # Traefik "web" entrypoint (HTTP) uzerinden Kong'un 18000 portuna yonlendirir.
+      # ═══════════════════════════════════════════════════════════════
+      - "traefik.http.routers.kong-proxy.rule=Host(`uat-api.medasista.com`)"
+      - "traefik.http.routers.kong-proxy.entrypoints=web"
+      - "traefik.http.routers.kong-proxy.service=kong-proxy-svc"
+      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=18000"
+      - "traefik.http.services.kong-proxy-svc.loadbalancer.passhostheader=true"
+      # Middleware: X-Forwarded-Proto=https ekle (Kong HTTPS gordugunu sansin)
+      - "traefik.http.middlewares.kong-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.kong-proxy.middlewares=kong-proxy-headers@docker"
+
   cloudflared:
     image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
     container_name: ${CLOUDFLARED_CONTAINER_NAME}
