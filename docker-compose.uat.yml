@@ -75,6 +75,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    volumes:
+      - ./request_validator.lua:/usr/local/kong/lib/request_validator.lua:ro
     networks:
       - kong-net
       - dokploy-network
