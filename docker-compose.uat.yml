@@ -61,6 +61,10 @@ services:
       KONG_ADMIN_GUI_PATH: /
       KONG_ADMIN_GUI_URL: ${KONG_MANAGER_URL}
       KONG_ADMIN_GUI_API_URL: ${KONG_ADMIN_URL}
+      # Disable Kong's own SSL termination — Traefik handles TLS via Cloudflare Access.
+      # Without this, Kong sees HTTP from Traefik but expects HTTPS (per KONG_ADMIN_GUI_URL),
+      # triggering a 301 redirect loop (ERR_TOO_MANY_REDIRECTS).
+      KONG_ADMIN_GUI_SSL: "off"
     ports:
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
       - "${KONG_PROXY_HTTPS_PORT}:${KONG_PROXY_HTTPS_PORT}"
@@ -103,11 +107,13 @@ services:
       # Middleware: Strips /api prefix before forwarding to Kong Admin API
       - "traefik.http.middlewares.strip-api-prefix.stripprefix.prefixes=/api"
       
-      # Middleware: X-Forwarded-Proto=https for Kong Manager (Cloudflare arkasi icin)
+      # Middleware: X-Forwarded-Proto=https and X-Forwarded-Port=443 for Kong Manager (Cloudflare arkasi icin)
       - "traefik.http.middlewares.kong-manager-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.kong-manager-headers.headers.customRequestHeaders.X-Forwarded-Port=443"
       
-      # Middleware: X-Forwarded-Proto=https for Kong Admin API (Cloudflare arkasi icin)
+      # Middleware: X-Forwarded-Proto=https and X-Forwarded-Port=443 for Kong Admin API (Cloudflare arkasi icin)
       - "traefik.http.middlewares.kong-admin-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.kong-admin-headers.headers.customRequestHeaders.X-Forwarded-Port=443"
 
       # ═══════════════════════════════════════════════════════════════
       # Kong Proxy (LLM API) - uat-api.medasista.com [END-TO-END HTTPS]
