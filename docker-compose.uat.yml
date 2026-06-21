@@ -93,7 +93,7 @@ services:
       - "traefik.http.routers.kong-manager.entrypoints=web"
       - "traefik.http.routers.kong-manager.service=kong-manager-svc"
       - "traefik.http.routers.kong-manager.middlewares=kong-manager-headers@docker"
-      - "traefik.http.routers.kong-manager.priority=10"
+      - "traefik.http.routers.kong-manager.priority=90"
       - "traefik.http.services.kong-manager-svc.loadbalancer.server.port=${KONG_MANAGER_PORT}"
 
       # Kong Admin API (/api Path + Prefix Stripping)
