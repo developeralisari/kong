@@ -114,6 +114,7 @@ services:
       #       -> Traefik (websecure entrypoint, HTTPS) -> Kong:18443 (HTTPS)
       # ═══════════════════════════════════════════════════════════════
       # Dokploy'un otomatik olusturdugu websecure service'ine HTTPS backend ayarlari
+      - "traefik.http.services.medasista-kong-kek2tz-77-websecure.loadbalancer.server.port=18443"
       - "traefik.http.services.medasista-kong-kek2tz-77-websecure.loadbalancer.server.scheme=https"
       - "traefik.http.services.medasista-kong-kek2tz-77-websecure.loadbalancer.serverstransport=kong-proxy-https@docker"
       - "traefik.http.services.medasista-kong-kek2tz-77-websecure.loadbalancer.passhostheader=true"
