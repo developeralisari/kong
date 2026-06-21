@@ -123,7 +123,7 @@ services:
       - "traefik.http.routers.kong-proxy-public.service=kong-proxy-svc"
       - "traefik.http.routers.kong-proxy-public.tls=true"
       - "traefik.http.routers.kong-proxy-public.priority=1000"
-      - "traefik.http.routers.kong-proxy-public.tls.certresolver=cloudflare"
+      - "traefik.http.routers.kong-proxy-public.tls.certresolver=letsencrypt"
       - "traefik.http.routers.kong-proxy-public.middlewares=kong-proxy-headers@docker"
       
       # Kendi service'imiz: Kong:18443'e HTTPS backend
