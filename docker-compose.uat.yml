@@ -132,14 +132,10 @@ services:
       - "traefik.http.routers.kong-proxy-public.tls.certresolver=letsencrypt"
       - "traefik.http.routers.kong-proxy-public.middlewares=kong-proxy-headers@docker"
       
-      # Kendi service'imiz: Kong:18443'e HTTPS backend
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=${KONG_PROXY_HTTPS_PORT}"
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.scheme=https"
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.serverstransport=kong-proxy-https@docker"
+      # Kendi service'imiz: Kong:8000'e HTTP backend
+      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=${KONG_PROXY_HTTP_PORT}"
+      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.scheme=http"
       - "traefik.http.services.kong-proxy-svc.loadbalancer.passhostheader=true"
-      
-      # Serverstransport: Kong'un self-signed sertifikasini dogrulamadan kabul et
-      - "traefik.http.serverstransports.kong-proxy-https.insecureskipverify=true"
       
       # Middleware: X-Forwarded-Proto=https ekle
       - "traefik.http.middlewares.kong-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
