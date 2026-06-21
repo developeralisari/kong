@@ -89,13 +89,16 @@ services:
       - "traefik.http.routers.kong-manager.entrypoints=web"
       - "traefik.http.routers.kong-manager.service=kong-manager-svc"
       - "traefik.http.routers.kong-manager.middlewares=kong-manager-headers@docker"
-      - "traefik.http.services.kong-manager-svc.loadbalancer.server.port=18002"
+      - "traefik.http.routers.kong-manager.priority=10"
+      - "traefik.http.services.kong-manager-svc.loadbalancer.server.port=${KONG_MANAGER_PORT}"
 
       # Kong Admin API (/api Path + Prefix Stripping)
       - "traefik.http.routers.kong-admin.rule=Host(`uat-kong.medasista.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.kong-admin.entrypoints=web"
       - "traefik.http.routers.kong-admin.middlewares=strip-api-prefix@docker,kong-admin-headers@docker"
       - "traefik.http.routers.kong-admin.service=kong-admin-svc"
-      - "traefik.http.services.kong-admin-svc.loadbalancer.server.port=18001"
+      - "traefik.http.routers.kong-admin.priority=100"
+      - "traefik.http.services.kong-admin-svc.loadbalancer.server.port=${KONG_ADMIN_PORT}"
 
       # Middleware: Strips /api prefix before forwarding to Kong Admin API
       - "traefik.http.middlewares.strip-api-prefix.stripprefix.prefixes=/api"
@@ -119,10 +122,12 @@ services:
       - "traefik.http.routers.kong-proxy-public.entrypoints=websecure"
       - "traefik.http.routers.kong-proxy-public.service=kong-proxy-svc"
       - "traefik.http.routers.kong-proxy-public.tls=true"
+      - "traefik.http.routers.kong-proxy-public.priority=1000"
+      - "traefik.http.routers.kong-proxy-public.tls.certresolver=cloudflare"
       - "traefik.http.routers.kong-proxy-public.middlewares=kong-proxy-headers@docker"
       
       # Kendi service'imiz: Kong:18443'e HTTPS backend
-      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=18443"
+      - "traefik.http.services.kong-proxy-svc.loadbalancer.server.port=${KONG_PROXY_HTTPS_PORT}"
       - "traefik.http.services.kong-proxy-svc.loadbalancer.server.scheme=https"
       - "traefik.http.services.kong-proxy-svc.loadbalancer.serverstransport=kong-proxy-https@docker"
       - "traefik.http.services.kong-proxy-svc.loadbalancer.passhostheader=true"
