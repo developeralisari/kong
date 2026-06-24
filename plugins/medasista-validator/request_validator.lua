@@ -524,9 +524,10 @@ function M.validate()
     end
 
     -- 2. Body kontrolü
-    local body = kong.request.get_body()
+    local raw_body = kong.request.get_raw_body()
+    local body, err = kong.request.get_body()
     if not body or type(body) ~= "table" then
-        return error_response(400, "ValidationError", "Request body required")
+        return error_response(400, "ValidationError", "Request body required. Raw length: " .. tostring(raw_body and #raw_body or "nil") .. " Err: " .. tostring(err))
     end
 
     -- 2a. Request structure limits
