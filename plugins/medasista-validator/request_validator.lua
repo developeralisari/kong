@@ -782,8 +782,11 @@ function M.validate()
         return error_response(500, "EncodeError", "Failed to encode body: " .. tostring(encoded_or_err))
     end
     
-    -- GEÇİCİ DEBUG: Upstream'e gitmeden önce payload'u bize döndürsün
-    return error_response(400, "DebugPayload", encoded_or_err)
+    -- VITAL HACK: Overwrite Kong's parsed body cache
+    ngx.ctx.KONG_REQUEST_BODY = body
+    kong.request.set_raw_body(encoded_or_err)
+    
+    -- Kong'un proxy yapmasına izin veriyoruz
 end
 
 -- ==========================================================================
