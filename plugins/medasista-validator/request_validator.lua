@@ -749,6 +749,15 @@ function M.validate()
     end
 
     -- Tüm validasyonlar başarılı, upstream'e devam et
+    -- Kong ai-prompt-template eklentisi gelen istekte 'messages' dizisini arar.
+    -- Müşteriden gelen ham veriye sahte bir messages dizisi ekleyelim ki eklenti çökmesin.
+    body.messages = {
+        { role = "user", content = "dummy" }
+    }
+    local ok, encoded = pcall(cjson.encode, body)
+    if ok then
+        kong.request.set_raw_body(encoded)
+    end
 end
 
 -- ==========================================================================
