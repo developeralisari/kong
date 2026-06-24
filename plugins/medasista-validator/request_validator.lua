@@ -748,6 +748,8 @@ function M.validate()
     }
     local ok, encoded = pcall(cjson.encode, body)
     if ok then
+        -- VITAL HACK: Clear Kong's parsed body cache so ai-prompt-template re-reads it!
+        ngx.ctx.KONG_REQUEST_BODY = nil
         kong.request.set_raw_body(encoded)
     end
 end
