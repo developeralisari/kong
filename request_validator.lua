@@ -747,7 +747,38 @@ function M.validate()
         end
     end
 
-    -- Tüm validasyonlar başarılı, upstream'e devam et
+    -- 8. YENİ: Başarılı validasyon sonrası, JSON'u vLLM/OpenAI formatına dönüştür.
+    local new_body = {
+        model = "medgemma-1.5",
+        messages = {
+            {
+                role = "user",
+                content = {
+                    {
+                        type = "text",
+                        text = "Kategori: " .. (body.category or "Bilinmiyor") .. "\nPrompt: " .. (body.output_template or "")
+                    },
+                    {
+                        type = "image_url",
+                        image_url = {
+                            url = body.image
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if body.max_tokens then
+        new_body.max_tokens = tonumber(body.max_tokens)
+    end
+
+    local ok, new_body_str = pcall(cjson.encode, new_body)
+    if ok then
+        kong.request.set_raw_body(new_body_str)
+    else
+        return error_response(500, "InternalError", "Failed to encode transformed body")
+    end
 end
 
 -- ==========================================================================
