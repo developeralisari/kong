@@ -774,12 +774,20 @@ function M.validate()
     body.output_template = nil
     body.metadata = nil
 
-    local ok, encoded = pcall(cjson.encode, body)
-    if ok then
-        -- VITAL HACK: Overwrite Kong's parsed body cache
-        ngx.ctx.KONG_REQUEST_BODY = body
-        kong.request.set_raw_body(encoded)
+    -- AI Proxy kapalı olduğu için model ismini bizim vermemiz gerekiyor:
+    body.model = "medgemma-1.5-4b-it"
+
+    local ok, encoded_or_err = pcall(cjson.encode, body)
+    if not ok then
+        return error_response(500, "EncodeError", "Failed to encode body: " .. tostring(encoded_or_err))
     end
+    
+    -- VITAL HACK: Overwrite Kong's parsed body cache
+    ngx.ctx.KONG_REQUEST_BODY = body
+    kong.request.set_raw_body(encoded_or_err)
+    
+    -- Add debug header
+    kong.response.set_header("X-Medasista-Validator", "Success")
 end
 
 -- ==========================================================================
