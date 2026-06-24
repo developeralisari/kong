@@ -430,3 +430,4 @@ networks:
   dokploy-network:
     external: true
     name: ${DOKPLOY_NETWORK_NAME}
+      DUMMY_VAR_FORCE_UPDATE: 1
