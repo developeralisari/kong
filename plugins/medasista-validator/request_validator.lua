@@ -741,14 +741,42 @@ function M.validate()
     end
 
     -- Tüm validasyonlar başarılı, upstream'e devam et
-    -- Kong ai-prompt-template eklentisi gelen istekte 'messages' dizisini arar.
-    -- Müşteriden gelen ham veriye sahte bir messages dizisi ekleyelim ki eklenti çökmesin.
+    -- Şablonlama: ai-prompt-template devre dışı olduğu için prompt'u biz oluşturuyoruz.
+    local category = body.category or "genel"
+    local output_template = body.output_template or ""
+    local image_url = body.image
+
     body.messages = {
-        { role = "user", content = "dummy" }
+        {
+            role = "system",
+            content = "Sen MedAsista altyapısında hizmet veren uzman bir " .. category .. " tıbbi görüntü analiz asistanısın. Sana gönderilen tıbbi görselleri analiz ederek kesinlikle tıbbi etik kurallarına uygun, yapılandırılmış bir rapor üretmelisin. Tahminlerinde yanılma payını minimize et ve doğruluğundan emin olmadığın durumlarda klinik korelasyon öner.\n\nKullanıcının istediği rapor formatı: " .. output_template
+        },
+        {
+            role = "user",
+            content = {
+                {
+                    type = "image_url",
+                    image_url = {
+                        url = image_url
+                    }
+                },
+                {
+                    type = "text",
+                    text = output_template
+                }
+            }
+        }
     }
+
+    -- Upstream'in (OpenAI formatı) kafasını karıştırmamak için özel alanlarımızı siliyoruz
+    body.category = nil
+    body.image = nil
+    body.output_template = nil
+    body.metadata = nil
+
     local ok, encoded = pcall(cjson.encode, body)
     if ok then
-        -- VITAL HACK: Overwrite Kong's parsed body cache so ai-prompt-template sees the injected 'messages'
+        -- VITAL HACK: Overwrite Kong's parsed body cache
         ngx.ctx.KONG_REQUEST_BODY = body
         kong.request.set_raw_body(encoded)
     end
