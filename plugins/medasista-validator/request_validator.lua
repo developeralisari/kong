@@ -784,7 +784,15 @@ function M.validate()
     
     -- VITAL HACK: Overwrite Kong's parsed body cache
     ngx.ctx.KONG_REQUEST_BODY = body
-    kong.request.set_raw_body(encoded_or_err)
+    
+    local ok_set, err_set = pcall(kong.service.request.set_raw_body, encoded_or_err)
+    if not ok_set then
+        -- Fallback for older Kong versions or catch the specific error
+        local ok_req, err_req = pcall(kong.request.set_raw_body, encoded_or_err)
+        if not ok_req then
+             return error_response(500, "SetBodyError", "service.request.set_raw_body failed: " .. tostring(err_set) .. " | request.set_raw_body failed: " .. tostring(err_req))
+        end
+    end
     
     -- Kong'un proxy yapmasına izin veriyoruz
 end
