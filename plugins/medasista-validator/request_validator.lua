@@ -457,14 +457,6 @@ local function detect_encoding_bypass(text)
         end
     end
 
-    -- Unicode homoglyph detection (Cyrillic vs Latin karışımı)
-    -- Basit yaklaşım: metinde hem Latin hem Cyrillic karakter varsa şüpheli
-    local has_latin = ngx.re.find(text, "[A-Za-z]", "jo")
-    local has_cyrillic = ngx.re.find(text, "[Ѐ-ӿ]", "jo")
-    if has_latin and has_cyrillic then
-        return "Mixed script (Latin + Cyrillic)"
-    end
-
     -- Zero-width character detection
     if ngx.re.find(text, "[\\x{200B}-\\x{200F}\\x{202A}-\\x{202E}\\x{FEFF}]", "jo") then
         return "Zero-width characters detected"
