@@ -775,7 +775,7 @@ function M.validate()
     body.metadata = nil
 
     -- AI Proxy kapalı olduğu için model ismini bizim vermemiz gerekiyor:
-    body.model = "medgemma-1.5-4b-it"
+    body.model = "google/medgemma-1.5-4b-it"
     body.stream = false
 
     local ok, encoded_or_err = pcall(cjson.encode, body)
