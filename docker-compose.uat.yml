@@ -102,7 +102,6 @@ services:
       retries: 5
       start_period: 30s
     volumes:
-      - ./request_validator.lua:/usr/local/kong/lib/request_validator.lua:ro
       - ./plugins/medasista-validator:/usr/local/share/lua/5.1/kong/plugins/medasista-validator:ro
     networks:
       - kong-net
