@@ -42,13 +42,16 @@ function MedasistaValidatorHandler:body_filter(conf)
 
     local content = first.message.content or ""
 
-    local simplified = cjson.encode({
-      -- ngx.var.kong_request_id tüm phase'lerde çalışır; kong.request.get_id()
-      -- sadece access/rewrite'da var, body_filter'da nil döner (502'ye yol açar).
-      request_id = ngx.var.kong_request_id or "unknown",
-      content = content,
-      usage = parsed.usage,
-    })
+    local request_id = ngx.var.kong_request_id or "unknown"
+    -- Manuel string format ile field sırası garantili: request_id → content → usage.
+    -- cjson.encode(table) LuaJIT hash sırası kullanır, insertion order korunmaz.
+    -- Her value ayrı ayrı cjson.encode ile güvenle serialize edilir (escape'ler dahil).
+    local simplified = string.format(
+      '{"request_id":%s,"content":%s,"usage":%s}',
+      cjson.encode(request_id),
+      cjson.encode(content),
+      parsed.usage and cjson.encode(parsed.usage) or "null"
+    )
 
     ngx.arg[1] = simplified
     -- NOT: Content-Length clear etmiyoruz. Response zaten chunked transfer-encoding
