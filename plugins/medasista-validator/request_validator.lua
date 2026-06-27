@@ -55,7 +55,7 @@ local DEFAULT_CONFIG = {
     max_image_height = 896,
 
     -- İzin verilen kategoriler
-    allowed_categories = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH" },
+    allowed_categories = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH", "MRG" },
 
     -- Kategori-görsel eşleştirme
     category_size_hints = {
@@ -96,6 +96,7 @@ local DEFAULT_CONFIG = {
         ["PAT"] = "Dijital Patoloji",
         ["USG"] = "Kardiyoloji/Ultrason - Ultrason Kesitleri",
         ["ECH"] = "Kardiyoloji/Ultrason - Ekokardiyografi",
+        ["MRG"] = "Manyetik Rezonans Görüntüleme",
     },
 
     -- Güvenlik pattern'ları (admin UI'dan override edilebilir)

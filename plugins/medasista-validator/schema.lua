@@ -65,16 +65,20 @@ return {
               description = "Maximum allowed image height in pixels.",
           } },
 
-          -- 5. Allowed medical categories (multi-select). set + one_of → chips.
+          -- 5. Allowed medical categories (multi-select). set + free-form string
+          --    elements → vue-multiselect chips. Categories are dynamic so ops
+          --    can add new codes (MRG, CT, PET, ...) from Admin UI without a
+          --    schema/code change. Runtime still enforces whitelist via
+          --    array_contains() in request_validator.lua, so unknown values
+          --    are rejected at request time.
           { allowed_categories = {
               type = "set",
               elements = {
                 type = "string",
-                one_of = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH" },
                 len_min = 1,
               },
-              default = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH" },
-              description = "Medical image categories accepted by this gateway.",
+              default = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH", "MRG" },
+              description = "Medical image categories accepted by this gateway. Editable from Admin UI.",
           } },
 
           -- 6. Category-size hints (map: category_code → min dimensions)
@@ -465,6 +469,7 @@ return {
                 ["PAT"] = "Dijital Patoloji",
                 ["USG"] = "Kardiyoloji/Ultrason - Ultrason Kesitleri",
                 ["ECH"] = "Kardiyoloji/Ultrason - Ekokardiyografi",
+                ["MRG"] = "Manyetik Rezonans Görüntüleme",
               },
           } },
 
