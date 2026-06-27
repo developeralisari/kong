@@ -28,6 +28,14 @@
 
 local cjson = require("cjson")
 
+-- Lua string.gsub replacement string'inde % özel karakter (capture index gibi yorumlanır).
+-- Kullanıcı kontrollü string'i (output_template, category) gsub'a vermeden önce
+-- % karakterlerini %% olarak escape etmek gerekir; aksi halde "invalid capture index" hatası fırlatır.
+local function gsub_escape(s)
+    if s == nil then return "" end
+    return (s:gsub("%%", "%%%%"))
+end
+
 local M = {}
 
 -- ==========================================================================
@@ -629,8 +637,8 @@ function M.validate(plugin_conf)
     -- System prompt template: {category} ve {output_template} placeholder'ları
     -- config'den gelen template ile değiştirilir.
     local prompt = cfg.system_prompt_template
-    prompt = string.gsub(prompt, "{category}", category)
-    prompt = string.gsub(prompt, "{output_template}", output_template)
+    prompt = string.gsub(prompt, "{category}", gsub_escape(category))
+    prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
 
     body.messages = {
         {
