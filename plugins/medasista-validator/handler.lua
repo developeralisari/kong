@@ -45,12 +45,28 @@ function MedasistaValidatorHandler:body_filter(conf)
     local request_id = ngx.var.kong_request_id or "unknown"
     -- Manuel string format ile field sırası garantili: request_id → content → usage.
     -- cjson.encode(table) LuaJIT hash sırası kullanır, insertion order korunmaz.
-    -- Her value ayrı ayrı cjson.encode ile güvenle serialize edilir (escape'ler dahil).
+    -- usage explicit 3 alanla (prompt_tokens, completion_tokens, total_tokens)
+    -- oluşturuluyor — vLLM'in "prompt_tokens_details" gibi null metadata'ları düşer.
+    local function enc(v)
+      if v == nil then return "null" end
+      return cjson.encode(v)
+    end
+
+    local usage_str = "null"
+    if type(parsed.usage) == "table" then
+      usage_str = string.format(
+        '{"prompt_tokens":%s,"completion_tokens":%s,"total_tokens":%s}',
+        enc(parsed.usage.prompt_tokens),
+        enc(parsed.usage.completion_tokens),
+        enc(parsed.usage.total_tokens)
+      )
+    end
+
     local simplified = string.format(
       '{"request_id":%s,"content":%s,"usage":%s}',
       cjson.encode(request_id),
       cjson.encode(content),
-      parsed.usage and cjson.encode(parsed.usage) or "null"
+      usage_str
     )
 
     ngx.arg[1] = simplified
