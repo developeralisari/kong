@@ -81,14 +81,42 @@ function MedasistaValidatorHandler:access(conf)
   validator.validate()
 
   -- Image base64 string'i BPE-inspired tokenization ile say.
-  -- vLLM'in "prompt_tokens" alanı multimodal image token'ları dahil etmiyor
-  -- (veya eksik sayıyor); burada hesaplanan image_tokens, response phase'te
-  -- vLLM'in prompt_tokens'ına eklenir.
+  -- vLLM'in prompt_tokens'ı multimodal image'ı dahil etmiyor (sadece text sayar).
+  -- Burada hesaplanan image_tokens, response phase'te input_tokens olarak
+  -- MÜŞTERİYE DÖNECEK (vLLM'in prompt_tokens'ı YOK sayılacak, çünkü yanlış).
+  --
+  -- Önce kong.request.get_body() dene (validator zaten cache'ledi), olmazsa
+  -- raw_body + cjson.decode fallback. İki yol da başarısız olursa 0 döner
+  -- (access log'a uyarı yazılır).
+  local cjson = require("cjson.safe")
   local body = kong.request.get_body()
+  local image_str = nil
+
   if body and type(body.image) == "string" then
-    kong.ctx.shared.image_tokens = calculate_base64_tokens(body.image)
+    image_str = body.image
+  else
+    -- Fallback: raw body'yi manuel parse et
+    local raw = kong.request.get_raw_body()
+    if raw and raw ~= "" then
+      local parsed, perr = cjson.decode(raw)
+      if parsed and type(parsed.image) == "string" then
+        image_str = parsed.image
+        ngx.log(ngx.NOTICE, "[medasista-validator] body parsed via raw_body fallback")
+      else
+        ngx.log(ngx.WARN, "[medasista-validator] raw_body parse failed: ", tostring(perr))
+      end
+    end
+  end
+
+  if image_str then
+    local tokens = calculate_base64_tokens(image_str)
+    kong.ctx.shared.image_tokens = tokens
+    ngx.log(ngx.NOTICE,
+      string.format("[medasista-validator] image_tokens=%d (b64_len=%d)",
+        tokens, #image_str))
   else
     kong.ctx.shared.image_tokens = 0
+    ngx.log(ngx.WARN, "[medasista-validator] no image string found in body")
   end
 end
 
@@ -134,17 +162,21 @@ function MedasistaValidatorHandler:body_filter(conf)
 
     local usage_str = "null"
     if type(parsed.usage) == "table" then
-      -- Access phase'te hesaplanan image_tokens'ı vLLM'in prompt_tokens'ına ekle.
-      -- vLLM sadece text sayıyor, multimodal image tokens eksik kalıyor.
+      -- input_tokens = SADECE bizim access phase'te base64'ten hesapladığımız.
+      -- vLLM'in prompt_tokens'ı YOK sayılır (yanlış sayar, multimodal image'ı
+      -- dahil etmiyor) — müşteriye response olarak vLLM'in input_tokens'ı
+      -- ASLA dönmeyecek. Sadece output_tokens vLLM'den alınır.
       local image_tokens = kong.ctx.shared.image_tokens or 0
-      local vllm_prompt = parsed.usage.prompt_tokens or 0
-      local input_tokens = vllm_prompt + image_tokens
       local output_tokens = parsed.usage.completion_tokens or 0
-      local total_tokens = input_tokens + output_tokens
+      local total_tokens = image_tokens + output_tokens
+
+      ngx.log(ngx.NOTICE,
+        string.format("[medasista-validator] usage: image_tokens=%d, vllm_output=%d, total=%d",
+          image_tokens, output_tokens, total_tokens))
 
       usage_str = string.format(
         '{"input_tokens":%s,"output_tokens":%s,"total_tokens":%s}',
-        enc(input_tokens),
+        enc(image_tokens),
         enc(output_tokens),
         enc(total_tokens)
       )
