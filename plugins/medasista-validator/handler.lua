@@ -1,7 +1,7 @@
 local validator = require("kong.plugins.medasista-validator.request_validator")
 
 -- Module load log: eger bu gorunuyorsa Kong yeni kodu yukledi demektir
-ngx.log(ngx.NOTICE, "[medasista-validator] HANDLER LOADED v1.2.0")
+ngx.log(ngx.NOTICE, "[medasista-validator] HANDLER LOADED v1.3.0")
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- BPE-inspired token calculation for base64 image strings.
@@ -74,44 +74,55 @@ end
 
 local MedasistaValidatorHandler = {
   PRIORITY = 1200, -- Runs in access phase before AI Proxy and Rate Limiting
-  VERSION = "1.2.0",
+  VERSION = "1.3.0",
 }
 
 function MedasistaValidatorHandler:access(conf)
   -- ═══════════════════════════════════════════════════════════════════════════
   -- CRITICAL ORDER: image_tokens hesaplaması validator.validate()'tan ÖNCE
   -- yapılmalı. Çünkü validator body'yi OpenAI formatına çevirip body.image'ı
-  -- siliyor (line 772-775: body.image = nil). Validator sonrası get_body()
-  -- transformed body döner — image field artık yok.
+  -- siliyor. Validator sonrası get_body() transformed body döner — image yok.
   --
   -- Akış:
   --   1. body.image'ı orijinal haliyle oku
   --   2. calculate_base64_tokens ile image_tokens hesapla, ctx.shared'e yaz
-  --   3. validator.validate() çağır (body upstream'e gönderilecek formata dönüşür)
+  --      (sadece conf.calculate_image_tokens == true ise; admin kapatabilir)
+  --   3. validator.validate(conf) çağır (body upstream formatına dönüşür)
   -- ═══════════════════════════════════════════════════════════════════════════
-  local cjson = require("cjson.safe")
-  local body = kong.request.get_body()
-  local image_str = nil
 
-  if body and type(body.image) == "string" then
-    image_str = body.image
-  end
+  -- conf hesaplanmamışsa default true kabul et (eski davranış)
+  local calc_image_tokens = conf.calculate_image_tokens
+  if calc_image_tokens == nil then calc_image_tokens = true end
 
-  if image_str then
-    local tokens = calculate_base64_tokens(image_str)
-    kong.ctx.shared.image_tokens = tokens
-    ngx.log(ngx.NOTICE,
-      string.format("[medasista-validator] image_tokens=%d (b64_len=%d)",
-        tokens, #image_str))
+  if calc_image_tokens then
+    local cjson = require("cjson.safe")
+    local body = kong.request.get_body()
+    local image_str = nil
+
+    if body and type(body.image) == "string" then
+      image_str = body.image
+    end
+
+    if image_str then
+      local tokens = calculate_base64_tokens(image_str)
+      kong.ctx.shared.image_tokens = tokens
+      ngx.log(ngx.NOTICE,
+        string.format("[medasista-validator] image_tokens=%d (b64_len=%d)",
+          tokens, #image_str))
+    else
+      kong.ctx.shared.image_tokens = 0
+      ngx.log(ngx.WARN,
+        "[medasista-validator] body.image is nil/not-string at access; image_tokens=0")
+    end
   else
     kong.ctx.shared.image_tokens = 0
-    ngx.log(ngx.WARN,
-      "[medasista-validator] body.image is nil/not-string at access; image_tokens=0")
+    ngx.log(ngx.NOTICE,
+      "[medasista-validator] calculate_image_tokens disabled in config; image_tokens=0")
   end
 
   -- Body transformation burada olur (validator): image field silinir, OpenAI
   -- messages[] yapısına dönüşür. Ama biz zaten image_tokens'ı ctx'e yazdık.
-  local ok, err = pcall(validator.validate)
+  local ok, err = pcall(validator.validate, conf)
   if not ok then
     ngx.log(ngx.ERR, "[medasista-validator] validator.validate ERROR: ", tostring(err))
   end
