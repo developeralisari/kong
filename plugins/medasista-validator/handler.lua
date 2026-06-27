@@ -11,7 +11,7 @@ end
 
 -- Response phase: vLLM OpenAI-format cevabini basit JSON'a donusturur.
 -- Girdi:  { "choices": [{"message": {"content": "..."}}], "usage": {...}, ... }
--- Cikti:  { "model": "...", "content": "...", "finish_reason": "stop", "usage": {...} }
+-- Cikti:  { "request_id": "<kong uuid>", "content": "...", "usage": {...} }
 function MedasistaValidatorHandler:response(conf)
   local cjson = require("cjson.safe")
 
@@ -34,9 +34,8 @@ function MedasistaValidatorHandler:response(conf)
   end
 
   local simplified = cjson.encode({
-    model = parsed.model,
+    request_id = kong.request.get_id(),
     content = content,
-    finish_reason = (first and first.finish_reason) or "stop",
     usage = parsed.usage,
   })
 
