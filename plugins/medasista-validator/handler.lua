@@ -10,6 +10,22 @@ local MedasistaValidatorHandler = {
 
 function MedasistaValidatorHandler:access(conf)
   validator.validate()
+
+  -- Image base64 string token sayısını hesapla (response phase'te input_tokens'a eklenecek).
+  -- vLLM'in "prompt_tokens" alanı sadece TEXT tokenları sayar (JSON + system prompt + base64 string).
+  -- Ancak base64 string'i image olarak gönderdiğimizde model bunu decode edip vision encoder'a
+  -- sokuyor; multimodal token maliyeti farklı.
+  --
+  -- Heuristic: medgemma 1.5 (Gemma tokenizer, SentencePiece) base64 karakter başına ~0.5 token
+  -- üretir. Yani base64_length / 2 yaklaşık doğru token sayısı. Overestimate eder (faturalandırma
+  -- için güvenli taraf), tam doğru olması için vLLM tarafında --mm-token-reporting gerekir.
+  local cjson = require("cjson.safe")
+  local body = kong.request.get_body()
+  if body and type(body.image) == "string" then
+    kong.ctx.shared.image_tokens = math.ceil(#body.image / 2)
+  else
+    kong.ctx.shared.image_tokens = 0
+  end
 end
 
 -- Response body transform: vLLM OpenAI-format → basit JSON.
@@ -54,11 +70,19 @@ function MedasistaValidatorHandler:body_filter(conf)
 
     local usage_str = "null"
     if type(parsed.usage) == "table" then
+      -- Access phase'te hesaplanan image_tokens'ı vLLM'in prompt_tokens'ına ekle.
+      -- vLLM sadece text sayıyor, multimodal image tokens eksik kalıyor.
+      local image_tokens = kong.ctx.shared.image_tokens or 0
+      local vllm_prompt = parsed.usage.prompt_tokens or 0
+      local input_tokens = vllm_prompt + image_tokens
+      local output_tokens = parsed.usage.completion_tokens or 0
+      local total_tokens = input_tokens + output_tokens
+
       usage_str = string.format(
         '{"input_tokens":%s,"output_tokens":%s,"total_tokens":%s}',
-        enc(parsed.usage.prompt_tokens),
-        enc(parsed.usage.completion_tokens),
-        enc(parsed.usage.total_tokens)
+        enc(input_tokens),
+        enc(output_tokens),
+        enc(total_tokens)
       )
     end
 
