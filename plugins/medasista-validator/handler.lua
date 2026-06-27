@@ -9,21 +9,27 @@ function MedasistaValidatorHandler:access(conf)
   validator.validate()
 end
 
--- Response phase: vLLM OpenAI-format cevabini basit JSON'a donusturur.
--- Girdi:  { "choices": [{"message": {"content": "..."}}], "usage": {...}, ... }
--- Cikti:  { "request_id": "<kong uuid>", "content": "...", "usage": {...} }
-function MedasistaValidatorHandler:response(conf)
+-- Response body transform: vLLM OpenAI-format → basit JSON.
+-- body_filter'da calisir (response body'si modify edilir), non-streaming response
+-- tek chunk olarak gelir (eof=true).
+function MedasistaValidatorHandler:body_filter(conf)
   local cjson = require("cjson.safe")
 
-  local body, err = kong.service.response.get_raw_body()
-  if not body then
-    kong.log.notice("[medasista-validator] response body empty: ", tostring(err))
+  local chunk = ngx.arg[1]
+  local eof = ngx.arg[2]
+
+  -- Streaming'de her chunk'ta calisir; biz sadece son chunk'ta toplu degisiklik yapariz
+  if not eof then
     return
   end
 
-  local parsed, perr = cjson.decode(body)
+  if not chunk or chunk == "" then
+    return
+  end
+
+  local parsed, perr = cjson.decode(chunk)
   if not parsed or not parsed.choices then
-    -- JSON degil veya OpenAI formatinda degil, dokunma
+    -- vLLM hata response'u veya OpenAI formatinda degil, dokunma
     return
   end
 
@@ -39,8 +45,9 @@ function MedasistaValidatorHandler:response(conf)
     usage = parsed.usage,
   })
 
-  kong.service.response.set_raw_body(simplified)
-  kong.response.set_header("Content-Type", "application/json; charset=utf-8")
+  ngx.arg[1] = simplified
+  -- Body boyutu degisti, Content-Length'i temizle ki nginx yeniden hesaplasin
+  kong.response.clear_header("Content-Length")
 end
 
 return MedasistaValidatorHandler
