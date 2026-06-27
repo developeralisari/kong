@@ -38,30 +38,31 @@ return {
               elements = {
                 type = "string",
                 one_of = { "GET", "POST", "PUT", "PATCH", "DELETE" },
+                len_min = 1,
               },
               default = { "POST", "PUT" },
-              required = true,
+              description = "HTTP methods this plugin will apply to.",
           } },
 
           -- 2. Max decoded image size (bytes)
           { max_file_size_bytes = {
               type = "number",
               default = 10485760, -- 10 MB
-              required = true,
+              description = "Maximum decoded image size in bytes (default 10 MB).",
           } },
 
           -- 3. Max image width (px)
           { max_image_width = {
               type = "number",
               default = 896,
-              required = true,
+              description = "Maximum allowed image width in pixels.",
           } },
 
           -- 4. Max image height (px)
           { max_image_height = {
               type = "number",
               default = 896,
-              required = true,
+              description = "Maximum allowed image height in pixels.",
           } },
 
           -- 5. Allowed medical categories (multi-select). set + one_of → chips.
@@ -70,9 +71,10 @@ return {
               elements = {
                 type = "string",
                 one_of = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH" },
+                len_min = 1,
               },
               default = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH" },
-              required = true,
+              description = "Medical image categories accepted by this gateway.",
           } },
 
           -- 6. Category-size hints (map: category_code → min dimensions)
@@ -152,7 +154,7 @@ return {
           { model_name = {
               type = "string",
               default = "google/medgemma-1.5-4b-it",
-              required = true,
+              description = "Upstream LLM model identifier (vLLM/HF format).",
           } },
 
           -- 17. Streaming response (LLM'e gönderilecek body.stream alanı)
@@ -433,8 +435,8 @@ return {
               elements = {
                 type = "record",
                 fields = {
-                  { pattern = { type = "string", required = true } },
-                  { type = { type = "string", required = true } },
+                  { pattern = { type = "string" } },
+                  { type = { type = "string" } },
                 },
               },
               default = {
