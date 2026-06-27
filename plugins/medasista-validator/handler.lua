@@ -55,7 +55,7 @@ function MedasistaValidatorHandler:body_filter(conf)
     local usage_str = "null"
     if type(parsed.usage) == "table" then
       usage_str = string.format(
-        '{"prompt_tokens":%s,"completion_tokens":%s,"total_tokens":%s}',
+        '{"input_tokens":%s,"output_tokens":%s,"total_tokens":%s}',
         enc(parsed.usage.prompt_tokens),
         enc(parsed.usage.completion_tokens),
         enc(parsed.usage.total_tokens)
