@@ -361,8 +361,6 @@ services:
       - dokploy-network
 
   kafka-ui:
-    # Admin panel for Kafka. UI itself has no auth (Cloudflare Access protects it).
-    # KAFKA_UI_VERSION holds image:tag in dokploy.md; user pins the exact version.
     image: ${KAFKA_UI_VERSION}
     logging:
       driver: "json-file"
@@ -380,39 +378,24 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: uat
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:${KAFKA_BROKER_CONTAINER_PORT}
-      # Auth disabled at the panel level; Cloudflare Access is the gate.
-      AUTH_TYPE: ${KAFKA_UI_AUTH_TYPE}
-      # Trust X-Forwarded-* headers from Traefik. Spring Boot default is NONE,
-      # which means the app sees the real request scheme (http, after Traefik
-      # terminates the TLS upstream) and 301-redirects to https -> Cloudflare
-      # re-strips -> ERR_TOO_MANY_REDIRECTS. FRAMEWORK configures Spring WebFlux's
-      # ForwardedHeaderTransformer to honor X-Forwarded-Proto at the container
-      # level — kafka-ui runs on Netty (not Tomcat), so NATIVE does NOT work;
-      # FRAMEWORK is required for reactive/Netty Spring Boot apps.
-      SERVER_FORWARD_HEADERS_STRATEGY: ${KAFKA_UI_FORWARD_HEADERS_STRATEGY}
+      # Spring Security'nin kendi login formlarına yönlendirme yapmasını engellemek için:
+      AUTH_TYPE: "DISABLED"
+      # FRAMEWORK: kafka-ui reactive/Netty, NATIVE Tomcat-only — Netty'de NATIVE çalışmaz:
+      SERVER_FORWARD_HEADERS_STRATEGY: "FRAMEWORK"
     depends_on:
       - kafka
     networks:
       - dokploy-network
       - kong-net
-    # EXACT SAME PATTERN AS KONG: Cloudflare Access is enabled on this domain,
-    # so Cloudflare handles TLS termination and authentication. Cloudflare Tunnel
-    # sends plain HTTP to Traefik on the 'web' entrypoint. We inject
-    # X-Forwarded-Proto=https so kafka-ui sees the original scheme and does not
-    # 301-loop. NO websecure router, NO redirect-to-https middleware.
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
-      # Backend service: container port 8080.
       - "traefik.http.services.kafka-ui-svc.loadbalancer.server.port=${KAFKA_UI_CONTAINER_PORT}"
-      # Middleware: inject X-Forwarded-Proto=https so kafka-ui (with FRAMEWORK
-      # forward headers strategy via Spring WebFlux ForwardedHeaderTransformer)
-      # sees the original https scheme and does not 301-loop.
+
+      # MİDDLEWARE EKLENTİSİ: Port=443 başlığı eklendi
       - "traefik.http.middlewares.kafka-ui-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
-      # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
-      # priority=300 (above Dokploy's auto-generated redirect-to-https router,
-      # default priority 0–100) so this custom route wins and Cloudflare's
-      # already-https request is not bounced back into a 301 loop.
+      - "traefik.http.middlewares.kafka-ui-proxy-headers.headers.customRequestHeaders.X-Forwarded-Port=443"
+
       - "traefik.http.routers.kafka-ui-public.rule=Host(`uat-kong-kafka.medasista.com`)"
       - "traefik.http.routers.kafka-ui-public.entrypoints=web"
       - "traefik.http.routers.kafka-ui-public.service=kafka-ui-svc"
