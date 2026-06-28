@@ -278,10 +278,14 @@ services:
       # and does not 301-loop.
       - "traefik.http.middlewares.grafana-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
+      # priority=300 (above Dokploy's auto-generated redirect-to-https router,
+      # default priority 0–100) so this custom route wins and Cloudflare's
+      # already-https request is not bounced back into a 301 loop.
       - "traefik.http.routers.grafana-public.rule=Host(`uat-kong-grafana.medasista.com`)"
       - "traefik.http.routers.grafana-public.entrypoints=web"
       - "traefik.http.routers.grafana-public.service=grafana-svc"
       - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
+      - "traefik.http.routers.grafana-public.priority=300"
 
   loki:
     image: grafana/loki:${LOKI_VERSION}
@@ -407,10 +411,14 @@ services:
       # sees the original https scheme and does not 301-loop.
       - "traefik.http.middlewares.kafka-ui-proxy-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
       # Router for the public hostname on the 'web' entrypoint (no TLS, plain HTTP).
+      # priority=300 (above Dokploy's auto-generated redirect-to-https router,
+      # default priority 0–100) so this custom route wins and Cloudflare's
+      # already-https request is not bounced back into a 301 loop.
       - "traefik.http.routers.kafka-ui-public.rule=Host(`uat-kong-kafka.medasista.com`)"
       - "traefik.http.routers.kafka-ui-public.entrypoints=web"
       - "traefik.http.routers.kafka-ui-public.service=kafka-ui-svc"
       - "traefik.http.routers.kafka-ui-public.middlewares=kafka-ui-proxy-headers@docker"
+      - "traefik.http.routers.kafka-ui-public.priority=300"
 
 volumes:
   kong-postgres-data:
