@@ -28,6 +28,34 @@
 local cjson = require("cjson.safe")
 local producer = require("resty.kafka.producer")
 
+-- MONKEY PATCH: lua-resty-kafka ile Kafka 3.x (KRaft) arasındaki
+-- keepalive uyumsuzluğundan kaynaklanan zararsız "err: closed, retryable: true"
+-- hatasını loglardan gizle. (Mesajlar retry ile başarıyla iletiliyor).
+if not producer._patched_for_benign_closed_err then
+  local old_flush = producer._flush_buffer
+  if old_flush then
+    producer._flush_buffer = function(self)
+      local old_log = ngx.log
+      ngx.log = function(level, ...)
+        if level == ngx.ERR then
+          local msg = ""
+          for _, v in ipairs({...}) do
+            msg = msg .. tostring(v)
+          end
+          if string.find(msg, "err: closed, retryable: true") then
+            return old_log(ngx.NOTICE, "[kafka-log-oss] Silenced benign keepalive error: ", msg)
+          end
+        end
+        return old_log(level, ...)
+      end
+      local ok, err = pcall(old_flush, self)
+      ngx.log = old_log
+      if not ok then error(err) end
+    end
+    producer._patched_for_benign_closed_err = true
+  end
+end
+
 ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.3.0 (pre-warm + per-step pcall)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -73,7 +101,7 @@ local function get_producer(conf)
 
   local p, perr = producer:new(broker_list, {
     producer_type = "async",
-    ["request.required.acks"] = 0, -- ZORUNLU TEST: Fire and forget (broker onay bekleme)
+    ["request.required.acks"] = conf.request_acks or 1,
     ["request.timeout.ms"] = conf.request_timeout_ms or 10000,
     ["queue.buffering.max.ms"] = conf.flush_timeout_ms or 1000,
     ["message.send.max.retries"] = conf.max_retries or 3,
