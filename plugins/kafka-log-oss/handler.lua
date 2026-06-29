@@ -310,15 +310,16 @@ function KafkaLogHandler:log(conf)
   local key = key_or_err
 
   -- Adım 5: Kafka'ya gönder (bu adım en şüpheli — ngx.timer.at tetikler)
-  local ok5, send_or_err = pcall(bp.send, bp, conf.topic, key, payload, conf.kafka_headers)
+  local ok5, ok_send, err_send = pcall(bp.send, bp, conf.topic, key, payload, conf.kafka_headers)
   if not ok5 then
-    ngx.log(ngx.ERR, "[kafka-log-oss] send PCALL FAILED: ", tostring(send_or_err))
+    ngx.log(ngx.ERR, "[kafka-log-oss] send PCALL FAILED: ", tostring(ok_send))
     return
   end
-  local serr = send_or_err
-  if serr and conf.log_send_errors ~= false then
-    ngx.log(ngx.ERR, "[kafka-log-oss] send returned err: topic=", conf.topic,
-      " err=", tostring(serr))
+  if not ok_send then
+    if conf.log_send_errors ~= false then
+      ngx.log(ngx.ERR, "[kafka-log-oss] send returned err: topic=", conf.topic,
+        " err=", tostring(err_send))
+    end
   end
 end
 
