@@ -154,11 +154,19 @@ return {
               description = "Geçici hatalarda (broker timeout, leader değişimi vs.) producer'ın mesajı tekrar gönderme denemesi sayısı. Tüm denemeler başarısız olursa event log_send_errors'a göre error log'a yazılır veya sessizce düşürülür.",
           } },
 
+          -- 16. Produce API versiyonu
+          { api_version = {
+              type = "number",
+              default = 2,
+              one_of = { 0, 1, 2, 3 },
+              description = "Kafka Produce API versiyonu. Varsayılan 2 (Kafka 0.10.0.0+ uyumlu). Modern Kafka (3.x+) kullanıyorsanız 2 veya 3 seçin. 0 seçerseniz broker 'UnsupportedVersionException: unsupported version 0' hatası verir. 3 = transactional id desteği (Kafka 2.1.0+).",
+          } },
+
           -- ═══════════════════════════════════════════════════════════════
           -- F. HATA YÖNETİMİ — Başarısız gönderimler
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 16. Failed sends → Kong error log'a yazılsın mı
+          -- 17. Failed sends → Kong error log'a yazılsın mı
           { log_send_errors = {
               type = "boolean",
               default = true,

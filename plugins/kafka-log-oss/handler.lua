@@ -66,7 +66,7 @@ end
 -- artık patched ngx.log'u referans alacak
 local producer = require("resty.kafka.producer")
 
-ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.6.0 (cache-cleared + patched ngx.log)")
+ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.7.0 (api_version fix for modern Kafka)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Producer cache: her worker process için bootstrap_servers başına bir
@@ -134,6 +134,19 @@ local function get_producer(conf)
     keepalive_timeout = 480000,
     keepalive_size    = 10,
     socket_timeout    = 3000,
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- KRİTİK: Produce API versiyonu
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- lua-resty-kafka'nın varsayılan api_version değeri 0'dır.
+    -- Modern Kafka broker'ları (3.x+) Produce API version 0'ı artık
+    -- desteklemiyor ve şu hatayı veriyor:
+    --   UnsupportedVersionException: Received request for api with key 0
+    --   (Produce) and unsupported version 0
+    -- api_version = 2 → Produce API v2 (Kafka 0.10.0.0+ ile uyumlu)
+    -- api_version = 3 → Produce API v3 (Kafka 2.1.0+ ile uyumlu, transactional id desteği)
+    -- ═══════════════════════════════════════════════════════════════════════
+    api_version = conf.api_version or 2,
   })
 
   if not p then
