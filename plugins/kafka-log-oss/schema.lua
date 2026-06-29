@@ -130,7 +130,7 @@ return {
               type = "number",
               default = 1,
               one_of = { 0, 1, -1 },
-              description = "Producer'ın gönderdiği mesaj için broker'dan bekleyeceği onay seviyesi. 0=fire-and-forget (en hızlı, veri kaybı riski), 1=sadece leader replica yazsın (önerilen, iyi denge), -1=tüm in-sync replica'lar yazsın (en güvenli, en yavaş).",
+              description = "Producer'ın broker'dan bekleyeceği onay seviyesi. 0=fire-and-forget (onay beklemez, broker çökerse mesaj kaybolur), 1=sadece leader broker yazsın (önerilen, iyi denge), -1=tüm in-sync replica'lar yazsın (en güvenli, en yavaş). NOT: Tek broker'lı kümlerde (replication_factor=1) 1 ile -1 işlevsel olarak aynıdır — başka replika yok.",
           } },
 
           -- 13. Request timeout (ms)
@@ -155,23 +155,10 @@ return {
           } },
 
           -- ═══════════════════════════════════════════════════════════════
-          -- F. CUSTOM FIELDS — Operasyonel ek metadata
+          -- F. HATA YÖNETİMİ — Başarısız gönderimler
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 16. Custom key-value
-          { custom_fields = {
-              type = "map",
-              keys = { type = "string" },
-              values = { type = "string" },
-              default = {},
-              description = "Her log event'inde 'custom' altına statik olarak eklenen key-value çiftleri. Operasyonel tag'ler için idealdir. Örn: {env='uat', team='platform', cost_center='engineering'}.",
-          } },
-
-          -- ═══════════════════════════════════════════════════════════════
-          -- G. HATA YÖNETİMİ — Başarısız gönderimler
-          -- ═══════════════════════════════════════════════════════════════
-
-          -- 17. Failed sends → Kong error log'a yazılsın mı
+          -- 16. Failed sends → Kong error log'a yazılsın mı
           { log_send_errors = {
               type = "boolean",
               default = true,

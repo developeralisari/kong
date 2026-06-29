@@ -154,8 +154,6 @@ local function build_event(conf)
       addr = ngx.var.upstream_addr or nil,
       status = ngx.var.upstream_status or nil,
     },
-
-    custom = conf.custom_fields or {},
   }
 
   -- İsteğe bağlı: request body
