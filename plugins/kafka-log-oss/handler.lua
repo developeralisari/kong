@@ -66,7 +66,7 @@ end
 -- artık patched ngx.log'u referans alacak
 local producer = require("resty.kafka.producer")
 
-ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.7.0 (api_version fix for modern Kafka)")
+ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.8.0 (HARDCODED api_version=2 — Lua 0 is truthy fix)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Producer cache: her worker process için bootstrap_servers başına bir
@@ -97,8 +97,23 @@ end
 -- Producer al. İlk çağrıda oluşturur (timer kurulumu access phase'inde
 -- yapılmış olmalı). pre-warmed=true ile erken uyarı verir.
 -- ═══════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
+-- KRİTİK: api_version HARDCODED
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Lua'da `0` TRUTHY'dir! Yani `conf.api_version or 2` ifadesi
+-- conf.api_version = 0 iken `0 or 2 = 0` döndürür (2 DEĞİL).
+-- Kong DB'deki eski plugin kaydında api_version = 0 olarak kayıtlı olabilir.
+-- Bu durumda producer, Produce API version 0 kullanır ve modern Kafka (3.x+)
+-- şu hatayı verir:
+--   UnsupportedVersionException: Received request for api with key 0
+--   (Produce) and unsupported version 0
+-- ÇÖZÜM: api_version'u HARDCODED 2 yap. conf.api_version'a ASLA güvenme.
+-- ═══════════════════════════════════════════════════════════════════════════
+local HARDCODED_API_VERSION = 2
+
 local function get_producer(conf)
-  local cache_key = conf.bootstrap_servers .. "|" .. conf.client_id
+  -- Cache key'e api_version ekle → eski (v0) producer otomatik invalidate olur
+  local cache_key = conf.bootstrap_servers .. "|" .. conf.client_id .. "|v" .. HARDCODED_API_VERSION
   local cached = producer_cache[cache_key]
   if cached then
     return cached
@@ -136,17 +151,13 @@ local function get_producer(conf)
     socket_timeout    = 3000,
 
     -- ═══════════════════════════════════════════════════════════════════════
-    -- KRİTİK: Produce API versiyonu
+    -- KRİTİK: Produce API versiyonu — HARDCODED
     -- ═══════════════════════════════════════════════════════════════════════
-    -- lua-resty-kafka'nın varsayılan api_version değeri 0'dır.
-    -- Modern Kafka broker'ları (3.x+) Produce API version 0'ı artık
-    -- desteklemiyor ve şu hatayı veriyor:
-    --   UnsupportedVersionException: Received request for api with key 0
-    --   (Produce) and unsupported version 0
-    -- api_version = 2 → Produce API v2 (Kafka 0.10.0.0+ ile uyumlu)
-    -- api_version = 3 → Produce API v3 (Kafka 2.1.0+ ile uyumlu, transactional id desteği)
+    -- conf.api_version'a GÜVENME! Lua'da 0 truthy olduğu için
+    -- `conf.api_version or 2` ifadesi conf.api_version=0 iken 0 döner.
+    -- HARDCODED_API_VERSION = 2 (Kafka 0.10+ uyumlu, modern broker'larda çalışır)
     -- ═══════════════════════════════════════════════════════════════════════
-    api_version = conf.api_version or 2,
+    api_version = HARDCODED_API_VERSION,
   })
 
   if not p then
@@ -155,7 +166,7 @@ local function get_producer(conf)
 
   producer_cache[cache_key] = p
   ngx.log(ngx.NOTICE, "[kafka-log-oss] producer created: brokers=", conf.bootstrap_servers,
-    " client_id=", conf.client_id)
+    " client_id=", conf.client_id, " api_version=", HARDCODED_API_VERSION, " (hardcoded)")
   return p
 end
 
@@ -239,7 +250,7 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 local KafkaLogHandler = {
   PRIORITY = 1,
-  VERSION = "1.3.0",
+  VERSION = "1.8.0",
 }
 
 -- ──────────────────────────────────────────────────────────────────────────
