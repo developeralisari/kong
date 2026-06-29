@@ -68,19 +68,11 @@ return {
               description = "Her log event'inde 'cluster' alanı altına yazılan cluster tanımlayıcısı. Birden fazla ortamdan (dev/uat/prod) aynı Kafka'ya log yazıyorsan ayırt etmek için kullan.",
           } },
 
-          -- 6. Service identifier (multi-tenant ortamlar için)
-          { service_id = {
-              type = "string",
-              default = "",
-              len_min = 0,
-              description = "Her log event'inde 'service_id' alanı altına yazılan servis tanımlayıcısı. Aynı gateway'den birden fazla downstream servise log yazıyorsan ayırt etmek için kullan. Boş bırakılırsa yazılmaz.",
-          } },
-
           -- ═══════════════════════════════════════════════════════════════
           -- C. MESSAGE KEY — Kafka partitioning
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 7. Message key template
+          -- 6. Message key template
           { message_key = {
               type = "string",
               default = "",
@@ -88,7 +80,7 @@ return {
               description = "Kafka mesaj key şablonu. Aynı key'e sahip mesajlar aynı partition'a düşer (sıralama korunur). Desteklenen placeholder'lar: {request_id}, {client_ip}, {path}, {consumer_id}. Boş bırakırsan key null olur ve round-robin partition yapılır.",
           } },
 
-          -- 8. Kafka message headers (record-level metadata, HTTP header'ı DEĞİL)
+          -- 7. Kafka message headers (record-level metadata, HTTP header'ı DEĞİL)
           { kafka_headers = {
               type = "map",
               keys = { type = "string" },
@@ -101,28 +93,28 @@ return {
           -- D. BODY YAKALAMA — Hassas, throughput'a etki eder
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 9. Request body logla
+          -- 8. Request body logla
           { log_request_body = {
               type = "boolean",
               default = false,
               description = "HTTP istek body'sini log event'ine dahil et. UYARI: LLM isteklerinde base64 image'lar büyük olduğu için bellek kullanımını ciddi artırır. Yüksek-throughput route'lar için kapalı tut, sadece debug için aç.",
           } },
 
-          -- 10. Response body logla
+          -- 9. Response body logla
           { log_response_body = {
               type = "boolean",
               default = false,
               description = "HTTP yanıt body'sini log event'ine dahil et. UYARI: Streaming response'larda (Server-Sent Events, chunked) body güvenilir şekilde yakalanamayabilir, kısmi içerik yazılabilir. LLM streaming response'larını loglamak için uygun değil.",
           } },
 
-          -- 11. Max request body size (bytes)
+          -- 10. Max request body size (bytes)
           { max_request_body_size = {
               type = "number",
               default = 8192,
               description = "İstek body'sinden yakalanacak maksimum byte (log_request_body=true olduğunda). Bu değeri aşan kısımlar kesilir ve event'e 'body_truncated: true' alanı eklenir. Varsayılan 8192 byte (8 KB) çoğu JSON isteği için yeterli.",
           } },
 
-          -- 12. Max response body size (bytes)
+          -- 11. Max response body size (bytes)
           { max_response_body_size = {
               type = "number",
               default = 8192,
@@ -133,7 +125,7 @@ return {
           -- E. PRODUCER AYARLARI
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 13. Acks (güvenilirlik seviyesi)
+          -- 12. Acks (güvenilirlik seviyesi)
           { request_acks = {
               type = "number",
               default = 1,
@@ -141,21 +133,21 @@ return {
               description = "Producer'ın gönderdiği mesaj için broker'dan bekleyeceği onay seviyesi. 0=fire-and-forget (en hızlı, veri kaybı riski), 1=sadece leader replica yazsın (önerilen, iyi denge), -1=tüm in-sync replica'lar yazsın (en güvenli, en yavaş).",
           } },
 
-          -- 14. Request timeout (ms)
+          -- 13. Request timeout (ms)
           { request_timeout_ms = {
               type = "number",
               default = 10000,
               description = "Producer'ın broker ack'ı için bekleyeceği maksimum süre (milisaniye). Bu süre içinde onay gelmezse gönderim başarısız sayılır ve max_retries uygulanır.",
           } },
 
-          -- 15. Buffer flush interval (ms)
+          -- 14. Buffer flush interval (ms)
           { flush_timeout_ms = {
               type = "number",
               default = 1000,
               description = "Buffer'da birikmiş mesajların broker'a gönderilme aralığı (milisaniye). Düşük değer = düşük gecikme, yüksek değer = daha iyi throughput (batch'leme avantajı). Varsayılan 1000ms çoğu kullanım için uygun.",
           } },
 
-          -- 16. Max retries
+          -- 15. Max retries
           { max_retries = {
               type = "number",
               default = 3,
@@ -166,7 +158,7 @@ return {
           -- F. CUSTOM FIELDS — Operasyonel ek metadata
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 17. Custom key-value
+          -- 16. Custom key-value
           { custom_fields = {
               type = "map",
               keys = { type = "string" },
@@ -179,7 +171,7 @@ return {
           -- G. HATA YÖNETİMİ — Başarısız gönderimler
           -- ═══════════════════════════════════════════════════════════════
 
-          -- 18. Failed sends → Kong error log'a yazılsın mı
+          -- 17. Failed sends → Kong error log'a yazılsın mı
           { log_send_errors = {
               type = "boolean",
               default = true,

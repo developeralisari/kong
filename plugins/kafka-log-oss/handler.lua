@@ -109,7 +109,6 @@ local function build_event(conf)
 
   local event = {
     cluster = conf.cluster_name or "uat",
-    service_id = conf.service_id or "",
     timestamp = os.time(),
     timestamp_ms = ngx.now() * 1000,
     request_id = ngx.var.kong_request_id or "unknown",
