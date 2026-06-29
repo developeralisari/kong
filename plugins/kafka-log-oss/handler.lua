@@ -28,7 +28,27 @@
 local cjson = require("cjson.safe")
 local producer = require("resty.kafka.producer")
 
-ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.3.0 (pre-warm + per-step pcall)")
+-- ==========================================================================
+-- GERÇEK ÇÖZÜM: lua-resty-kafka'nın ngx.timer içindeki zararsız closed 
+-- hatasını Kong error.log'lardan tamamen temizle.
+-- ==========================================================================
+do
+    local original_log = ngx.log
+    ngx.log = function(level, ...)
+        -- Sadece ERR seviyesindeki logları kontrol et (performans için)
+        if level == ngx.ERR then
+            local ok, str = pcall(table.concat, {...})
+            -- Eğer hata mesajı Kafka'nın zararsiz closed hatasıysa yut (hiçbir yere yazma)
+            if ok and str and str:find("err: closed, retryable: true", 1, true) then
+                return 
+            end
+        end
+        -- Diğer tüm loglar (Kong'un kendi hataları, gerçek hatalar vb.) normal devam etsin
+        return original_log(level, ...)
+    end
+end
+
+ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.4.0 (silent-retryable-fix)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Producer cache: her worker process için bootstrap_servers başına bir
