@@ -68,6 +68,7 @@ return {
           { service_id = {
               type = "string",
               default = "",
+              len_min = 0,
               description = "Service identifier written to every log event under 'service_id'. Useful for multi-tenant setups.",
           } },
 
@@ -79,6 +80,7 @@ return {
           { message_key = {
               type = "string",
               default = "",
+              len_min = 0,
               description = "Kafka message key template. Supports placeholders: {request_id}, {client_ip}, {path}, {consumer_id}. Empty = null key (round-robin partition).",
           } },
 
