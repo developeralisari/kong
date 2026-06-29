@@ -25,22 +25,6 @@ ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.0.0")
 local producer_cache = {}
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Body capture hard limit. log_request_body / log_response_body açıksa
--- body'nin bu kadar byte'ı log'a yazılır, aşan kısım kesilir.
---
--- 10 MB seçildi çünkü:
---   - KONG_NGINX_HTTP_CLIENT_MAX_BODY_SIZE (varsayılan 10-20 MB) seviyesinde,
---     yani pratikte "limitsiz" — istek zaten bundan büyük gelemez
---   - KAFKA_MESSAGE_MAX_BYTES (16 MB) altında — diğer event alanları
---     (request, response header'ları, vs.) için yer kalır
---   - Operatörün ayarlaması gerekmiyor, çakışma/yanlış konfigürasyon riski yok
---
--- DEĞİŞTİRMEK İÇİN: Bu sabit değeri değiştir ve yeni bir container image
--- build et. Runtime'da override EDİLEMEZ (schema'da alan yok).
--- ═══════════════════════════════════════════════════════════════════════════
-local MAX_BODY_CAPTURE_BYTES = 10 * 1024 * 1024  -- 10 MB
-
--- ═══════════════════════════════════════════════════════════════════════════
 -- bootstrap_servers string → {{host=, port=}, ...} array dönüşümü
 -- Geçersiz format → nil + hata mesajı
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -179,9 +163,10 @@ local function build_event(conf)
   if conf.log_request_body then
     local body = kong.request.get_raw_body()
     if body and body ~= "" then
-      if #body > MAX_BODY_CAPTURE_BYTES then
+      local max_size = conf.max_request_body_size or 8192
+      if #body > max_size then
         event.request.body_truncated = true
-        event.request.body = string.sub(body, 1, MAX_BODY_CAPTURE_BYTES)
+        event.request.body = string.sub(body, 1, max_size)
       else
         event.request.body = body
       end
@@ -192,9 +177,10 @@ local function build_event(conf)
   if conf.log_response_body then
     local body = kong.service.response.get_raw_body()
     if body and body ~= "" then
-      if #body > MAX_BODY_CAPTURE_BYTES then
+      local max_size = conf.max_response_body_size or 8192
+      if #body > max_size then
         event.response.body_truncated = true
-        event.response.body = string.sub(body, 1, MAX_BODY_CAPTURE_BYTES)
+        event.response.body = string.sub(body, 1, max_size)
       else
         event.response.body = body
       end
