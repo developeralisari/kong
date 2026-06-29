@@ -310,7 +310,10 @@ function KafkaLogHandler:log(conf)
   local key = key_or_err
 
   -- Adım 5: Kafka'ya gönder (bu adım en şüpheli — ngx.timer.at tetikler)
-  local ok5, ok_send, err_send = pcall(bp.send, bp, conf.topic, key, payload, conf.kafka_headers)
+  -- NOT: conf.kafka_headers argümanını kaldırdık, çünkü lua-resty-kafka'nın
+  -- bazı versiyonları headers beklerken boş table {} gelince paketi bozabilir
+  -- ve Kafka broker'ın bağlantıyı anında kapatmasına (err: closed) sebep olabilir.
+  local ok5, ok_send, err_send = pcall(bp.send, bp, conf.topic, key, payload)
   if not ok5 then
     ngx.log(ngx.ERR, "[kafka-log-oss] send PCALL FAILED: ", tostring(ok_send))
     return
