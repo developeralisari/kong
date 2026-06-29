@@ -41,10 +41,32 @@ ngx.log = function(level, ...)
     return original_ngx_log(level, ...)
 end
 
--- ŞİMDİ producer'ı yüklüyoruz ki o da patched ngx.log'u referans alsın
+-- ══════════════════════════════════════════════════════════════════════════
+-- Module cache temizliği
+-- ══════════════════════════════════════════════════════════════════════════
+-- lua-resty-kafka modülleri başında `local ngx_log = ngx.log` ile ngx.log'u
+-- bir LOCAL değişkene cache'ler. Eğer bu modüller daha önce (Kong init_by_lua,
+-- başka bir plugin, vs.) require edildiyse, Lua package.loaded'dan cache'lenmiş
+-- modülü döndürür ve modül tekrar YÜKLENMEZ. Bu durumda modülün başındaki
+-- `local ngx_log = ngx.log` satırı patch'ten ÖNCE çalışmış olur ve yukarıdaki
+-- patch çalışmaz. Cache'i temizleyerek modülü yeniden yüklüyoruz.
+-- ══════════════════════════════════════════════════════════════════════════
+for _, mod in ipairs({
+    "resty.kafka.producer",
+    "resty.kafka.client",
+    "resty.kafka.broker",
+    "resty.kafka.ringbuffer",
+    "resty.kafka.sendbuffer",
+    "resty.kafka.request",
+}) do
+    package.loaded[mod] = nil
+end
+
+-- ŞİMDİ producer'ı yüklüyoruz — modül başındaki `local ngx_log = ngx.log`
+-- artık patched ngx.log'u referans alacak
 local producer = require("resty.kafka.producer")
 
-ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.5.0 (pre-load patched ngx.log)")
+ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.6.0 (cache-cleared + patched ngx.log)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Producer cache: her worker process için bootstrap_servers başına bir
@@ -94,11 +116,24 @@ local function get_producer(conf)
     ["queue.buffering.max.ms"] = conf.flush_timeout_ms or 1000,
     ["message.send.max.retries"] = conf.max_retries or 3,
     ["client.id"] = conf.client_id or "kong-kafka-log-oss",
-    
-    -- Kafka broker keepalive süresinden (örn: 60sn) biraz düşük tutulmalı
-    socket_keepalive = true,       
-    socket_keepalive_timeout = 50, 
-    socket_keepalive_poolsize = 10,
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- Socket keepalive ayarları (lua-resty-kafka client.lua beklenen isimler)
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- keepalive_timeout (ms): sock:setkeepalive() timeout'u.
+    --   ÖNEMLİ: Kafka broker'ın `connections.max.idle.ms` değerinden DÜŞÜK
+    --   olmalı. Aksi halde Kafka, producer'dan ÖNCE idle bağlantıyı kapatır
+    --   ve producer kapalı connection üzerinden mesaj göndermeye çalışarak
+    --   "err: closed, retryable: true" hatası üretir.
+    --   Kong handler: 480000ms (8dk)  <  Kafka: 540000ms (9dk)
+    --
+    -- keepalive_size: connection pool büyüklüğü (her broker için).
+    --
+    -- socket_timeout (ms): socket send/recv timeout (varsayılan 3000ms).
+    -- ═══════════════════════════════════════════════════════════════════════
+    keepalive_timeout = 480000,
+    keepalive_size    = 10,
+    socket_timeout    = 3000,
   })
 
   if not p then

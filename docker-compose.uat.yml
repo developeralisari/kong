@@ -369,6 +369,13 @@ services:
       KAFKA_MESSAGE_MAX_BYTES: "16777216"
       KAFKA_REPLICA_FETCH_MAX_BYTES: "16777216"
       KAFKA_FETCH_MESSAGE_MAX_BYTES: "16777216"
+      # ───────────────────────────────────────────────────────────────────
+      # Connection idle timeout (ms): Kafka idle bağlantıları bu süre sonunda kapatır.
+      # lua-resty-kafka keepalive_timeout (480000ms = 8dk) < bu değer (540000ms = 9dk)
+      # olmalı ki producer, Kafka'dan ÖNCE connection'ı kapatsın. Aksi halde
+      # Kafka kapalı connection'a mesaj göndermeye çalışır → "err: closed, retryable: true"
+      # ───────────────────────────────────────────────────────────────────
+      KAFKA_CONNECTIONS_MAX_IDLE_MS: "540000"
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
