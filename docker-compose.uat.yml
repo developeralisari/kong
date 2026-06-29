@@ -77,8 +77,12 @@ services:
       KONG_NGINX_HTTP_CLIENT_BODY_BUFFER_SIZE: ${KONG_NGINX_HTTP_CLIENT_BODY_BUFFER_SIZE}
       KONG_NGINX_HTTP_CLIENT_MAX_BODY_SIZE: ${KONG_NGINX_HTTP_CLIENT_MAX_BODY_SIZE}
       KONG_DNS_ORDER: LAST,SRV,A,CNAME
-      KONG_PLUGINS: ${KONG_PLUGINS}
-      KONG_ADMIN_GUI_CUSTOM_PLUGINS: ${KONG_ADMIN_GUI_CUSTOM_PLUGINS}
+      # KONG_PLUGINS / KONG_ADMIN_GUI_CUSTOM_PLUGINS: mevcut değerin sonuna
+      # `,kafka-log-oss` eklenir. Eğer .env'de boşsa default `bundled,medasista-validator`
+      # kullanılır. Kullanıcı Admin UI'dan kafka-log-oss plugin'ini route/service'lere
+      # bağlayabilir.
+      KONG_PLUGINS: ${KONG_PLUGINS:-bundled,medasista-validator},kafka-log-oss
+      KONG_ADMIN_GUI_CUSTOM_PLUGINS: ${KONG_ADMIN_GUI_CUSTOM_PLUGINS:-medasista-validator},kafka-log-oss
       KONG_UNTRUSTED_LUA_REQUIRES: ${KONG_UNTRUSTED_LUA_REQUIRES}
       KONG_LUA_PACKAGE_PATH: ${KONG_LUA_PACKAGE_PATH}
       KONG_ADMIN_GUI_LISTEN: "0.0.0.0:${KONG_MANAGER_PORT}"
@@ -105,6 +109,7 @@ services:
       start_period: 30s
     volumes:
       - ./plugins/medasista-validator:/usr/local/share/lua/5.1/kong/plugins/medasista-validator:ro
+      - ./plugins/kafka-log-oss:/usr/local/share/lua/5.1/kong/plugins/kafka-log-oss:ro
     networks:
       - kong-net
       - dokploy-network
@@ -182,34 +187,39 @@ services:
     networks:
       - dokploy-network
 
-  victoria-metrics:
-    image: victoriametrics/victoria-metrics:${VICTORIA_METRICS_VERSION}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
-    container_name: ${VICTORIA_METRICS_CONTAINER_NAME}
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: ${VICTORIA_METRICS_MEMORY_LIMIT}
-    ports:
-      - "${VICTORIA_METRICS_PORT}:${VICTORIA_METRICS_PORT}"
-    command:
-      - "--storageDataPath=/storage"
-      - "--retentionPeriod=${VICTORIA_METRICS_RETENTION_DAYS}"
-      - "--httpListenAddr=:${VICTORIA_METRICS_PORT}"
-      - "--memory.allowedPercent=${VICTORIA_METRICS_MEMORY_PERCENT}"
-      - "--search.maxMemoryPerQuery=0"
-      - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
-    volumes:
-      - victoria-metrics-data:/storage
-      - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
-    networks:
-      - dokploy-network
-      - kong-net
+  # ─────────────────────────────────────────────────────────────────────
+  # victoria-metrics — DEVRE DIŞI (UAT'ta kullanılmıyor, ileride açılabilir)
+  # Aktif etmek için: aşağıdaki tüm satırlardaki başındaki `# ` kaldır,
+  # volumes bölümündeki `victoria-metrics-data` satırını da aç.
+  # ─────────────────────────────────────────────────────────────────────
+  # victoria-metrics:
+  #   image: victoriametrics/victoria-metrics:${VICTORIA_METRICS_VERSION}
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "50m"
+  #       max-file: "3"
+  #   container_name: ${VICTORIA_METRICS_CONTAINER_NAME}
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: ${VICTORIA_METRICS_MEMORY_LIMIT}
+  #   ports:
+  #     - "${VICTORIA_METRICS_PORT}:${VICTORIA_METRICS_PORT}"
+  #   command:
+  #     - "--storageDataPath=/storage"
+  #     - "--retentionPeriod=${VICTORIA_METRICS_RETENTION_DAYS}"
+  #     - "--httpListenAddr=:${VICTORIA_METRICS_PORT}"
+  #     - "--memory.allowedPercent=${VICTORIA_METRICS_MEMORY_PERCENT}"
+  #     - "--search.maxMemoryPerQuery=0"
+  #     - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
+  #   volumes:
+  #     - victoria-metrics-data:/storage
+  #     - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
+  #   networks:
+  #     - dokploy-network
+  #     - kong-net
 
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION}
@@ -260,8 +270,8 @@ services:
     networks:
       - dokploy-network
       - kong-net
-    depends_on:
-      - victoria-metrics
+    # depends_on:
+    #   - victoria-metrics   # ← victoria-metrics devre dışı (ileride açılırsa geri al)
     # EXACT SAME PATTERN AS KONG: Cloudflare Access is enabled on this domain,
     # so Cloudflare handles TLS termination and authentication. Cloudflare Tunnel
     # sends plain HTTP to Traefik on the 'web' entrypoint. We inject
@@ -286,29 +296,34 @@ services:
       - "traefik.http.routers.grafana-public.middlewares=grafana-proxy-headers@docker"
       - "traefik.http.routers.grafana-public.priority=300"
 
-  loki:
-    image: grafana/loki:${LOKI_VERSION}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
-    container_name: ${LOKI_CONTAINER_NAME}
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: ${LOKI_MEMORY_LIMIT}
-    command: -config.file=/etc/loki/config.yml
-    user: "${LOKI_UID}:${LOKI_UID}"
-    ports:
-      - "${LOKI_PORT}:${LOKI_CONTAINER_PORT}"
-    volumes:
-      - loki-data:/loki
-      - ./loki/config.yml:/etc/loki/config.yml:ro
-    networks:
-      - kong-net
-      - dokploy-network
+  # ─────────────────────────────────────────────────────────────────────
+  # loki — DEVRE DIŞI (UAT'ta kullanılmıyor, ileride açılabilir)
+  # Aktif etmek için: aşağıdaki tüm satırlardaki başındaki `# ` kaldır,
+  # volumes bölümündeki `loki-data` satırını da aç.
+  # ─────────────────────────────────────────────────────────────────────
+  # loki:
+  #   image: grafana/loki:${LOKI_VERSION}
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "50m"
+  #       max-file: "3"
+  #   container_name: ${LOKI_CONTAINER_NAME}
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: ${LOKI_MEMORY_LIMIT}
+  #   command: -config.file=/etc/loki/config.yml
+  #   user: "${LOKI_UID}:${LOKI_UID}"
+  #   ports:
+  #     - "${LOKI_PORT}:${LOKI_CONTAINER_PORT}"
+  #   volumes:
+  #     - loki-data:/loki
+  #     - ./loki/config.yml:/etc/loki/config.yml:ro
+  #   networks:
+  #     - kong-net
+  #     - dokploy-network
 
   kafka:
     # Single-node Kafka in KRaft mode (no Zookeeper).
@@ -405,12 +420,12 @@ services:
 volumes:
   kong-postgres-data:
     name: ${KONG_POSTGRES_VOLUME_NAME}
-  victoria-metrics-data:
-    name: ${VICTORIA_METRICS_VOLUME_NAME}
+  # victoria-metrics-data:   # ← victoria-metrics devre dışı
+  #   name: ${VICTORIA_METRICS_VOLUME_NAME}
   grafana-data:
     name: ${GRAFANA_VOLUME_NAME}
-  loki-data:
-    name: ${LOKI_VOLUME_NAME}
+  # loki-data:               # ← loki devre dışı
+  #   name: ${LOKI_VOLUME_NAME}
   kafka-data:
     name: ${KAFKA_VOLUME_NAME}
 
