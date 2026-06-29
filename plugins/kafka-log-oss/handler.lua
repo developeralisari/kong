@@ -73,7 +73,7 @@ local function get_producer(conf)
 
   local p, perr = producer:new(broker_list, {
     producer_type = "async",
-    ["request.required.acks"] = conf.request_acks or 1,
+    ["request.required.acks"] = 0, -- ZORUNLU TEST: Fire and forget (broker onay bekleme)
     ["request.timeout.ms"] = conf.request_timeout_ms or 10000,
     ["queue.buffering.max.ms"] = conf.flush_timeout_ms or 1000,
     ["message.send.max.retries"] = conf.max_retries or 3,
