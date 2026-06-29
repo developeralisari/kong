@@ -6,24 +6,31 @@
 -- Sends events in log phase (after response sent to client) so it never
 -- blocks upstream latency.
 --
--- PHASE STRATEGY (KRITIK — log phase kısıtlamaları nedeniyle):
---   :access       — kong.request.* API'leri YALNIZCA burada çalışır.
---                   request method/path/query/headers/body'yi topla,
---                   kong.ctx.shared.kafka_log_oss'a yaz.
---   :body_filter  — response body chunk'larını biriktir (log phase'inde
---                   response buffer da recycle edilmiş olur).
---   :log          — sadece ngx.var.*, ngx.status, kong.response.* (log'da
---                   çalışır), ve kong.ctx.shared'dan okur; asla
---                   kong.request.* çağırmaz.
+-- PHASE STRATEGY (KATIK KURAL):
+--   LOG PHASE'INDE HİÇBİR kong.* API'Sİ ÇAĞRILMAZ.
+--   Nedeni: globalpatches.lua her kong.* çağrısında faz kontrolü yapar;
+--   birçoğu (kong.request.*, kong.client.get_credential, vb.) log fazında
+--   "API disabled in the context of log_by_lua*" fırlatır. Hangi sürümde
+--   hangi API'nin yasaklandığı net değil, dolayısıyla en güvenli yol
+--   hiç çağırmamak.
 --
--- All config fields are dynamic — reloaded from DB on every request.
--- Schema defined in schema.lua.
+--   :access       — Tüm kong.* çağrılarını burada yap:
+--                     kong.request.*, kong.router.*, kong.client.*
+--                   Sonuçları kong.ctx.shared.kafka_log_oss'a yaz.
+--   :body_filter  — Response header + body'yi topla:
+--                     kong.response.get_status / get_header (body_filter'da OK)
+--                     response body chunk'larını biriktir
+--   :log          — YALNIZCA:
+--                     ngx.var.*, ngx.status, ngx.now(), os.time()
+--                     cjson.encode
+--                     kong.ctx.shared.kafka_log_oss (access'te yazdığımız)
+--                     producer:send (lua-resty-kafka)
 -- ==========================================================================
 
 local cjson = require("cjson.safe")
 local producer = require("resty.kafka.producer")
 
-ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.1.0 (access+body_filter+log phases)")
+ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.2.0 (zero kong.* in log phase)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Producer cache: her worker process için bootstrap_servers başına bir
@@ -112,20 +119,36 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 local KafkaLogHandler = {
   PRIORITY = 1,
-  VERSION = "1.1.0",
+  VERSION = "1.2.0",
 }
 
 -- ──────────────────────────────────────────────────────────────────────────
--- ACCESS phase: request data'yı topla ve stash'le
--- kong.request.* API'leri YALNIZCA burada çalışır; log phase'inde API
--- disabled hatası fırlatır.
+-- ACCESS phase: HER ŞEYİ burada topla, log phase'ine hazır paket bırak
 -- ──────────────────────────────────────────────────────────────────────────
 function KafkaLogHandler:access(conf)
+  local route = kong.router.get_route()
+  local service = route and route.service
+  local cred = kong.client.get_credential()
+
   local ctx = {
+    -- Request
     method  = kong.request.get_method(),
     path    = kong.request.get_path(),
     query   = kong.request.get_raw_query(),
     headers = kong.request.get_headers(),
+
+    -- Route (cached for log phase)
+    route_id   = route and route.id or nil,
+    route_name = route and route.name or nil,
+
+    -- Service (cached for log phase)
+    service_id   = service and service.id or nil,
+    service_name = service and service.name or nil,
+    service_host = service and service.host or nil,
+
+    -- Consumer (cached for log phase — kong.client.get_credential log'da yasak)
+    consumer_id       = cred and cred.consumer and cred.consumer.id or nil,
+    consumer_username = cred and cred.consumer and cred.consumer.username or nil,
   }
 
   -- Request body (eager capture — yalnızca log_request_body=true olduğunda)
@@ -140,44 +163,40 @@ function KafkaLogHandler:access(conf)
 end
 
 -- ──────────────────────────────────────────────────────────────────────────
--- BODY_FILTER phase: response body chunk'larını biriktir
--- Response buffer da log phase'inde recycle edildiği için burada toplamak
--- zorundayız. arg[1] = chunk, arg[2] = eof. Pass-through: arg[1]'i
--- değiştirmiyoruz, sadece biriktiriyoruz.
+-- BODY_FILTER phase: response header + body topla
+-- kong.response.* API'leri bu fazda çalışır (header_filter, body_filter, log).
+-- Body_filter'da topluyoruz çünkü log phase'inde body buffer recycle edilmiş.
 -- ──────────────────────────────────────────────────────────────────────────
 function KafkaLogHandler:body_filter(conf)
-  if not conf.log_response_body then
+  local ctx = kong.ctx.shared.kafka_log_oss
+  if not ctx then
     return
   end
 
-  local ctx = kong.ctx.shared.kafka_log_oss
-  if not ctx then
-    return  -- access phase never ran (very early failure), nothing to do
+  -- Response header'ları ilk chunk'te bir kez yakala
+  if not ctx.response_headers_captured then
+    ctx.response_status = kong.response.get_status()
+    ctx.response_content_length = tonumber(kong.response.get_header("content-length")) or 0
+    ctx.response_headers_captured = true
   end
 
-  local chunk = ngx.arg[1]
-  if chunk and chunk ~= "" then
-    ctx.response_body = (ctx.response_body or "") .. chunk
+  -- Response body chunk'larını biriktir (sadece log_response_body=true)
+  if conf.log_response_body then
+    local chunk = ngx.arg[1]
+    if chunk and chunk ~= "" then
+      ctx.response_body = (ctx.response_body or "") .. chunk
+    end
   end
 end
 
 -- ──────────────────────────────────────────────────────────────────────────
--- LOG phase: Kafka'ya gönder
--- Bu fazda ASLA kong.request.* çağrısı yapma. Sadece:
---   - ngx.var.* / ngx.status (her zaman kullanılabilir)
---   - kong.response.* (header_filter/body_filter/log fazlarında çalışır)
---   - kong.client.get_ip / get_credential (log fazında çalışır)
---   - kong.router.get_route (log fazında çalışır)
---   - kong.ctx.shared.kafka_log_oss (access'te yazdığımız veri)
+-- LOG phase: Kafka'ya gönder — SIFIR kong.* çağrısı
+-- Tek istisna: ngx.var.* (her zaman OK), ngx.status, ngx.now(), producer.send
 -- ──────────────────────────────────────────────────────────────────────────
 function KafkaLogHandler:log(conf)
   local ctx = kong.ctx.shared.kafka_log_oss or {}
 
   local ok, err = pcall(function()
-    local route = kong.router.get_route()
-    local service = route and route.service
-    local cred = kong.client.get_credential()
-
     local event = {
       cluster      = conf.cluster_name or "uat",
       timestamp    = os.time(),
@@ -196,24 +215,24 @@ function KafkaLogHandler:log(conf)
       },
 
       route = {
-        id   = route and route.id or nil,
-        name = route and route.name or nil,
+        id   = ctx.route_id,
+        name = ctx.route_name,
       },
 
       service = {
-        id   = service and service.id or nil,
-        name = service and service.name or nil,
-        host = service and service.host or nil,
+        id   = ctx.service_id,
+        name = ctx.service_name,
+        host = ctx.service_host,
       },
 
-      consumer = cred and cred.consumer and {
-        id       = cred.consumer.id,
-        username = cred.consumer.username,
+      consumer = ctx.consumer_id and {
+        id       = ctx.consumer_id,
+        username = ctx.consumer_username,
       } or nil,
 
       response = {
-        status         = kong.response.get_status(),
-        content_length = tonumber(kong.response.get_header("content-length")) or 0,
+        status         = ctx.response_status or ngx.status or 0,
+        content_length = ctx.response_content_length or 0,
       },
 
       latency = {
