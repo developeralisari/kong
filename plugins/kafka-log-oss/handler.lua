@@ -66,7 +66,66 @@ end
 -- artık patched ngx.log'u referans alacak
 local producer = require("resty.kafka.producer")
 
-ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v1.8.0 (HARDCODED api_version=2 — Lua 0 is truthy fix)")
+-- ══════════════════════════════════════════════════════════════════════════
+-- MONKEY-PATCH #1: request:new() — api_version'u zorla 2 yap
+-- ══════════════════════════════════════════════════════════════════════════
+-- KÖK NEDEN (source code analizi ile doğrulandı):
+--
+-- lua-resty-kafka/request.lua satır ~80:
+--   function _M.new(self, apikey, correlation_id, client_id, api_version)
+--       api_version = api_version or API_VERSION_V0  -- API_VERSION_V0 = 0
+--
+-- lua-resty-kafka/producer.lua produce_encode fonksiyonu:
+--   local req = request:new(request.ProduceRequest,
+--                           correlation_id(self), self.client.client_id, self.api_version)
+--
+-- Eğer self.api_version bir şekilde nil/false ise, request:new() içinde
+-- api_version = nil or 0 = 0 olur. Kafka broker Produce API v0'ı desteklemez:
+--   UnsupportedVersionException: Received request for api with key 0
+--   (Produce) and unsupported version 0
+--
+-- EK SORUN: producer.lua'da cluster_inited cache'i var:
+--   if async and cluster_inited[name] then
+--       return cluster_inited[name]  -- producer_config YOK SAYILIR!
+--   end
+--
+-- ÇÖZÜM: request:new() çağrıldığında api_version'u zorla 2 yap.
+-- Bu EN ALT KATMAN — ne olursa olsun çalışır.
+-- ══════════════════════════════════════════════════════════════════════════
+local request_mod = require("resty.kafka.request")
+local original_request_new = request_mod.new
+
+request_mod.new = function(self, apikey, correlation_id, client_id, api_version)
+    -- ProduceRequest (apikey=0) için api_version'u zorla en az 2 yap
+    if apikey == request_mod.ProduceRequest then
+        if not api_version or api_version < 2 then
+            api_version = 2
+        end
+    end
+    return original_request_new(self, apikey, correlation_id, client_id, api_version)
+end
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- MONKEY-PATCH #2: producer:new() — api_version'u zorla 2 yap
+-- ══════════════════════════════════════════════════════════════════════════
+-- producer:new() içinde:
+--   api_version = opts.api_version or API_VERSION_V1  -- 1
+-- satırı var. opts.api_version = nil ise 1 olur (0 değil, ama 1 de çalışmayabilir).
+-- Ayrıca cluster_inited cache'i producer_config'i yok sayabilir.
+-- ÇÖZÜM: producer:new() çağrıldığında producer_config.api_version'u zorla 2 yap.
+-- ══════════════════════════════════════════════════════════════════════════
+local producer_mod = require("resty.kafka.producer")
+local original_producer_new = producer_mod.new
+
+producer_mod.new = function(self, broker_list, producer_config, cluster_name)
+    producer_config = producer_config or {}
+    producer_config.api_version = 2  -- Zorla 2 yap
+    return original_producer_new(self, broker_list, producer_config, cluster_name)
+end
+
+
+ngx.log(ngx.NOTICE, "[kafka-log-oss] HANDLER LOADED v2.0.0 (MONKEY-PATCH: request:new + producer:new → api_version=2 forced)")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Producer cache: her worker process için bootstrap_servers başına bir
@@ -250,7 +309,7 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 local KafkaLogHandler = {
   PRIORITY = 1,
-  VERSION = "1.8.0",
+  VERSION = "2.0.0",
 }
 
 -- ──────────────────────────────────────────────────────────────────────────
