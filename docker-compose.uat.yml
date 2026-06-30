@@ -446,7 +446,7 @@ services:
       POSTGRES_PASSWORD: ${JOBS_PG_PASSWORD}
       POSTGRES_DB: ${JOBS_PG_DATABASE}
     volumes:
-      - jobs-postgres-data:/var/lib/postgresql/data
+      - jobs-postgres-data:/var/lib/postgresql
     networks:
       - kong-net
 
