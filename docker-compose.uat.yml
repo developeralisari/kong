@@ -424,6 +424,86 @@ services:
       - "traefik.http.routers.kafka-ui-public.middlewares=kafka-ui-proxy-headers@docker"
       - "traefik.http.routers.kafka-ui-public.priority=300"
 
+  # ─────────────────────────────────────────────────────────────────────
+  # jobs-database — Job Service için ayrı PostgreSQL 17
+  # Kong'un veritabanından tamamen izole. llm_jobs tablosu burada yaşar.
+  # ─────────────────────────────────────────────────────────────────────
+  jobs-database:
+    image: postgres:${JOBS_PG_VERSION}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    container_name: ${JOBS_PG_CONTAINER_NAME}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${JOBS_PG_MEMORY_LIMIT}
+    environment:
+      POSTGRES_USER: ${JOBS_PG_USER}
+      POSTGRES_PASSWORD: ${JOBS_PG_PASSWORD}
+      POSTGRES_DB: ${JOBS_PG_DATABASE}
+    volumes:
+      - jobs-postgres-data:/var/lib/postgresql/data
+    networks:
+      - kong-net
+
+  job-api:
+    build:
+      context: ./job-service
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    container_name: uat-job-api
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKERS: "kafka:${KAFKA_BROKER_CONTAINER_PORT}"
+      KAFKA_TOPIC: "llm-jobs"
+      PG_HOST: "${JOBS_PG_HOST}"
+      PG_PORT: "5432"
+      PG_USER: "${JOBS_PG_USER}"
+      PG_PASSWORD: "${JOBS_PG_PASSWORD}"
+      PG_DATABASE: "${JOBS_PG_DATABASE}"
+    depends_on:
+      - kafka
+      - jobs-database
+    networks:
+      - kong-net
+      - dokploy-network
+
+  job-worker:
+    build:
+      context: ./job-service
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    container_name: uat-job-worker
+    command: python -u worker.py
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKERS: "kafka:${KAFKA_BROKER_CONTAINER_PORT}"
+      KAFKA_TOPIC: "llm-jobs"
+      PG_HOST: "${JOBS_PG_HOST}"
+      PG_PORT: "5432"
+      PG_USER: "${JOBS_PG_USER}"
+      PG_PASSWORD: "${JOBS_PG_PASSWORD}"
+      PG_DATABASE: "${JOBS_PG_DATABASE}"
+      VLLM_URL: "${JOBS_VLLM_URL}"
+      CONCURRENCY_LIMIT: "${JOBS_CONCURRENCY_LIMIT}"
+    depends_on:
+      - kafka
+      - jobs-database
+    networks:
+      - kong-net
+      - dokploy-network
+
 volumes:
   kong-postgres-data:
     name: ${KONG_POSTGRES_VOLUME_NAME}
@@ -435,6 +515,8 @@ volumes:
   #   name: ${LOKI_VOLUME_NAME}
   kafka-data:
     name: ${KAFKA_VOLUME_NAME}
+  jobs-postgres-data:
+    name: ${JOBS_PG_VOLUME_NAME}
 
 networks:
   kong-net:
