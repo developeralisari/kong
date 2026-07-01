@@ -677,6 +677,12 @@ function M.validate(plugin_conf)
     body.model = cfg.model_name
     body.stream = cfg.stream_enabled
 
+    -- ASYNC WORKER ICIN METADATA: 
+    -- Worker'ın response'u formatlayabilmesi için hesaplanan token'ı iletiyoruz.
+    body.medasista_metadata = {
+        image_tokens = kong.ctx.shared.image_tokens or 0
+    }
+
     -- JSON encode
     local ok, encoded_or_err = pcall(cjson.encode, body)
     if not ok then

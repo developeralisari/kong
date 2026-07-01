@@ -97,12 +97,39 @@ async def process_job(job_id, payload, client):
     await safe_update_job_status(job_id, "PROCESSING")
 
     try:
+        # ASYNC WORKER RESPONSE FORMATTING:
+        # Kong's body_filter doesn't run on the GET polling endpoint's nested result.
+        # So we extract the tokens passed from Kong, pop the metadata so vLLM doesn't complain,
+        # and format the response right here before saving to the DB.
+        meta = payload.pop("medasista_metadata", {})
+        image_tokens = meta.get("image_tokens", 0)
+
         response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
 
         if response.status_code == 200:
-            result = response.json()
-            logger.info(f"[job={job_id}] Completed successfully.")
-            await safe_update_job_status(job_id, "COMPLETED", result=result)
+            raw_result = response.json()
+            
+            # Format the response exactly like Kong's body_filter did
+            content = ""
+            choices = raw_result.get("choices", [])
+            if choices and isinstance(choices, list) and choices[0].get("message"):
+                content = choices[0]["message"].get("content", "")
+                
+            vllm_output_tokens = raw_result.get("usage", {}).get("completion_tokens", 0)
+            total_tokens = image_tokens + vllm_output_tokens
+            
+            simplified_result = {
+                "request_id": job_id,
+                "content": content,
+                "usage": {
+                    "input_tokens": image_tokens,
+                    "output_tokens": vllm_output_tokens,
+                    "total_tokens": total_tokens
+                }
+            }
+            
+            logger.info(f"[job={job_id}] Completed successfully. Output tokens: {vllm_output_tokens}")
+            await safe_update_job_status(job_id, "COMPLETED", result=simplified_result)
         else:
             error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
             logger.error(f"[job={job_id}] {error_msg}")
