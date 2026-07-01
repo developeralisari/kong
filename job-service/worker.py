@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 KAFKA_BROKERS = os.environ.get('KAFKA_BROKERS', 'kafka:9092')
 KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'llm-jobs')
-KAFKA_GROUP_ID = os.environ.get('KAFKA_GROUP_ID', 'kong-log-worker-group')
+KAFKA_GROUP_ID = os.environ.get('KAFKA_GROUP_ID', 'llm-jobs-worker-group')
 
 PG_HOST = os.environ.get('PG_HOST', 'kong-database')
 PG_PORT = os.environ.get('PG_PORT', '5432')
