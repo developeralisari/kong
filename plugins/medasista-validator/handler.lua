@@ -78,6 +78,12 @@ local MedasistaValidatorHandler = {
 }
 
 function MedasistaValidatorHandler:access(conf)
+  -- GET/DELETE gibi body barındırmayan istekler için plugin'i çalıştırma
+  local method = kong.request.get_method()
+  if method ~= "POST" and method ~= "PUT" then
+    return
+  end
+
   -- ═══════════════════════════════════════════════════════════════════════════
   -- CRITICAL ORDER: image_tokens hesaplaması validator.validate()'tan ÖNCE
   -- yapılmalı. Çünkü validator body'yi OpenAI formatına çevirip body.image'ı
@@ -89,12 +95,6 @@ function MedasistaValidatorHandler:access(conf)
   --      (sadece conf.calculate_image_tokens == true ise; admin kapatabilir)
   --   3. validator.validate(conf) çağır (body upstream formatına dönüşür)
   -- ═══════════════════════════════════════════════════════════════════════════
-
-  -- GET/DELETE gibi body barındırmayan istekler için plugin'i çalıştırma
-  local method = kong.request.get_method()
-  if method ~= "POST" and method ~= "PUT" then
-    return
-  end
 
   -- conf hesaplanmamışsa default true kabul et (eski davranış)
   local calc_image_tokens = conf.calculate_image_tokens
