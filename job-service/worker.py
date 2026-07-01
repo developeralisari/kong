@@ -80,14 +80,21 @@ def update_job_status(job_id, status, result=None, error=None):
         logger.error(f"Failed to update job {job_id} in DB: {e}")
         if conn:
             conn.rollback()
+        raise  # Critical: Raise error so process_job fails and offset is not committed
     finally:
         if conn:
             db_pool.putconn(conn)
 
+db_semaphore = None
+
+async def safe_update_job_status(*args, **kwargs):
+    async with db_semaphore:
+        await asyncio.to_thread(update_job_status, *args, **kwargs)
+
 
 async def process_job(job_id, payload, client):
     logger.info(f"[job={job_id}] Processing...")
-    await asyncio.to_thread(update_job_status, job_id, "PROCESSING")
+    await safe_update_job_status(job_id, "PROCESSING")
 
     try:
         response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
@@ -95,18 +102,18 @@ async def process_job(job_id, payload, client):
         if response.status_code == 200:
             result = response.json()
             logger.info(f"[job={job_id}] Completed successfully.")
-            await asyncio.to_thread(update_job_status, job_id, "COMPLETED", result=result)
+            await safe_update_job_status(job_id, "COMPLETED", result=result)
         else:
             error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
             logger.error(f"[job={job_id}] {error_msg}")
-            await asyncio.to_thread(update_job_status, job_id, "FAILED", error=error_msg)
+            await safe_update_job_status(job_id, "FAILED", error=error_msg)
     except httpx.TimeoutException:
         error_msg = f"vLLM timeout after {VLLM_TIMEOUT}s"
         logger.error(f"[job={job_id}] {error_msg}")
-        await asyncio.to_thread(update_job_status, job_id, "FAILED", error=error_msg)
+        await safe_update_job_status(job_id, "FAILED", error=error_msg)
     except Exception as e:
         logger.error(f"[job={job_id}] Unexpected error: {e}")
-        await asyncio.to_thread(update_job_status, job_id, "FAILED", error=str(e))
+        await safe_update_job_status(job_id, "FAILED", error=str(e))
 
 
 async def main():
@@ -130,6 +137,9 @@ async def main():
     )
     await consumer.start()
     logger.info(f"Subscribed to topic: {KAFKA_TOPIC}")
+
+    global db_semaphore
+    db_semaphore = asyncio.Semaphore(15)  # Limit DB concurrent operations to prevent pool exhaustion
 
     shutdown_event = asyncio.Event()
 
@@ -173,9 +183,20 @@ async def main():
                 
                 if tasks:
                     logger.debug(f"Awaiting {len(tasks)} concurrent tasks...")
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
                     
-                    # Safe commit only after the entire batch is completed
+                    has_db_error = False
+                    for r in results:
+                        if isinstance(r, Exception):
+                            logger.error(f"Task raised exception: {r}")
+                            has_db_error = True
+                            
+                    if has_db_error:
+                        logger.critical("Batch failed due to DB/critical errors. Aborting to prevent data loss.")
+                        shutdown_event.set()
+                        break
+                    
+                    # Safe commit only after the entire batch is completed successfully
                     try:
                         await consumer.commit()
                     except Exception as e:
