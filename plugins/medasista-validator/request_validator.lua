@@ -633,7 +633,13 @@ function M.validate(plugin_conf)
     -- ═══════════════════════════════════════════════════════════════════
     local category = body.category or "genel"
     local output_template = body.output_template or ""
+    
     local image_url = body.image
+    -- Ensure the image has a data URI prefix, otherwise vLLM URL validators might hang (ReDoS) or try to download it
+    if image_url and string.sub(image_url, 1, 5) ~= "data:" then
+        local ext = (format == "png") and "png" or "jpeg"
+        image_url = "data:image/" .. ext .. ";base64," .. image_url
+    end
 
     -- System prompt template: {category} ve {output_template} placeholder'ları
     -- config'den gelen template ile değiştirilir.
