@@ -119,7 +119,6 @@ async def process_job(job_id, payload, client):
             total_tokens = image_tokens + vllm_output_tokens
             
             simplified_result = {
-                "request_id": job_id,
                 "content": content,
                 "usage": {
                     "input_tokens": image_tokens,
