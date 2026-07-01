@@ -341,9 +341,11 @@ function KafkaLogHandler:access(conf)
   }
 
   if conf.log_request_body then
-    local body = kong.request.get_raw_body()
-    if body and body ~= "" then
-      ctx.body = body
+    if ctx.method == "POST" or ctx.method == "PUT" or ctx.method == "PATCH" then
+      local body = kong.request.get_raw_body()
+      if body and body ~= "" then
+        ctx.body = body
+      end
     end
   end
 
