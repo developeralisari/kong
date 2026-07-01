@@ -48,14 +48,30 @@ async def lifespan(app: FastAPI):
     )
     logger.info("DB connection pool initialized.")
 
-    # Initialize Kafka Producer
+    # Initialize Kafka Producer with retry (Kafka may not be ready yet at container start)
     global producer
-    producer = AIOKafkaProducer(
-        bootstrap_servers=KAFKA_BROKERS,
-        client_id='job-api-producer'
-    )
-    await producer.start()
-    logger.info("Kafka producer started.")
+    max_retries = 30
+    for attempt in range(1, max_retries + 1):
+        try:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=KAFKA_BROKERS,
+                client_id='job-api-producer'
+            )
+            await producer.start()
+            logger.info("Kafka producer started.")
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(f"Kafka producer failed after {max_retries} attempts: {e}")
+                raise
+            logger.warning(f"Kafka not ready (attempt {attempt}/{max_retries}): {e} — retrying in 2s...")
+            if producer:
+                try:
+                    await producer.stop()
+                except Exception:
+                    pass
+                producer = None
+            await asyncio.sleep(2)
 
     # Tablo oluştur
     conn = db_pool.getconn()

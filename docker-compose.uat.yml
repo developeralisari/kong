@@ -496,6 +496,7 @@ services:
       PG_PASSWORD: "${JOBS_PG_PASSWORD}"
       PG_DATABASE: "${JOBS_PG_DATABASE}"
       VLLM_URL: "${JOBS_VLLM_URL}"
+      VLLM_TIMEOUT: "${VLLM_TIMEOUT:-600}"
       CONCURRENCY_LIMIT: "${JOBS_CONCURRENCY_LIMIT}"
     depends_on:
       - kafka

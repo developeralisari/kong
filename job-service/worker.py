@@ -126,15 +126,32 @@ async def main():
 
     await asyncio.to_thread(init_db_pool)
 
-    consumer = AIOKafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_BROKERS,
-        group_id=KAFKA_GROUP_ID,
-        auto_offset_reset='earliest',
-        enable_auto_commit=False
-    )
-    await consumer.start()
-    logger.info(f"Subscribed to topic: {KAFKA_TOPIC}")
+    consumer = None
+    max_retries = 30
+    for attempt in range(1, max_retries + 1):
+        try:
+            consumer = AIOKafkaConsumer(
+                KAFKA_TOPIC,
+                bootstrap_servers=KAFKA_BROKERS,
+                group_id=KAFKA_GROUP_ID,
+                auto_offset_reset='earliest',
+                enable_auto_commit=False
+            )
+            await consumer.start()
+            logger.info(f"Subscribed to topic: {KAFKA_TOPIC}")
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(f"Kafka consumer failed after {max_retries} attempts: {e}")
+                raise
+            logger.warning(f"Kafka not ready (attempt {attempt}/{max_retries}): {e} — retrying in 2s...")
+            if consumer:
+                try:
+                    await consumer.stop()
+                except Exception:
+                    pass
+                consumer = None
+            await asyncio.sleep(2)
 
     global db_semaphore
     db_semaphore = asyncio.Semaphore(15)  # Limit DB concurrent operations to prevent pool exhaustion
