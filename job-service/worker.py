@@ -124,8 +124,6 @@ async def main():
     logger.info(f"  Concurrency Limit: {CONCURRENCY_LIMIT}")
     logger.info("═══════════════════════════════════════════════════")
 
-    semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-
     await asyncio.to_thread(init_db_pool)
 
     consumer = AIOKafkaConsumer(

@@ -5,6 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+import asyncio
 from aiokafka import AIOKafkaProducer
 import psycopg2
 from psycopg2 import pool
@@ -92,6 +93,46 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LLM Job API", lifespan=lifespan)
 
+def db_insert_job(job_id, payload_dict):
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO llm_jobs (job_id, status, payload) VALUES (%s, %s, %s)",
+            (job_id, "PENDING", Json(payload_dict))
+        )
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        logger.error(f"Failed to insert job into database: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def db_update_job_failed(job_id, error_msg):
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE llm_jobs SET status = 'FAILED', error = %s, updated_at = NOW() WHERE job_id = %s",
+            (error_msg, job_id)
+        )
+        conn.commit()
+        cur.close()
+    except Exception as db_err:
+        logger.error(f"Failed to update status to FAILED: {db_err}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: Request):
     try:
@@ -101,25 +142,11 @@ async def create_chat_completion(request: Request):
 
     job_id = str(uuid.uuid4())
     
-    # Save PENDING job to DB
-    conn = None
+    # Save PENDING job to DB asynchronusly
     try:
-        conn = db_pool.getconn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO llm_jobs (job_id, status, payload) VALUES (%s, %s, %s)",
-            (job_id, "PENDING", Json(body))
-        )
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        logger.error(f"Failed to insert job into database: {e}")
-        if conn:
-            conn.rollback()
+        await asyncio.to_thread(db_insert_job, job_id, body)
+    except Exception:
         raise HTTPException(status_code=500, detail="Database error")
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
     # Send Job to Kafka
     kafka_payload = {
@@ -136,25 +163,8 @@ async def create_chat_completion(request: Request):
         logger.info(f"Message delivered to {KAFKA_TOPIC} [job_id={job_id}]")
     except Exception as e:
         logger.error(f"Failed to send job to Kafka: {e}")
-        # Update job to FAILED in DB
-        conn = None
-        try:
-            conn = db_pool.getconn()
-            cur = conn.cursor()
-            cur.execute(
-                "UPDATE llm_jobs SET status = 'FAILED', error = %s, updated_at = NOW() WHERE job_id = %s",
-                (f"Kafka error: {str(e)}", job_id)
-            )
-            conn.commit()
-            cur.close()
-        except Exception as db_err:
-            logger.error(f"Failed to update status to FAILED: {db_err}")
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                db_pool.putconn(conn)
-
+        # Update job to FAILED in DB asynchronously
+        await asyncio.to_thread(db_update_job_failed, job_id, f"Kafka error: {str(e)}")
         raise HTTPException(status_code=500, detail="Queue error")
 
     return JSONResponse(
@@ -162,8 +172,7 @@ async def create_chat_completion(request: Request):
         content={"job_id": job_id, "status": "PENDING", "message": "Job queued successfully"}
     )
 
-@app.get("/v1/jobs/{job_id}")
-async def get_job_status(job_id: str):
+def db_get_job(job_id):
     conn = None
     try:
         conn = db_pool.getconn()
@@ -174,12 +183,20 @@ async def get_job_status(job_id: str):
         )
         row = cur.fetchone()
         cur.close()
+        return row
     except Exception as e:
         logger.error(f"Database query failed: {e}")
-        raise HTTPException(status_code=500, detail="Database query failed")
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)
+
+@app.get("/v1/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    try:
+        row = await asyncio.to_thread(db_get_job, job_id)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Database query failed")
 
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
