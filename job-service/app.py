@@ -5,7 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from confluent_kafka import Producer
+from aiokafka import AIOKafkaProducer
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
@@ -28,18 +28,7 @@ PG_PASSWORD = os.environ.get('PG_PASSWORD', 'kong')
 PG_DATABASE = os.environ.get('PG_DATABASE', 'kong')
 
 # Initialize Kafka Producer
-producer_config = {
-    'bootstrap.servers': KAFKA_BROKERS,
-    'client.id': 'job-api-producer'
-}
-producer = Producer(producer_config)
-
-
-def delivery_report(err, msg):
-    if err is not None:
-        logger.error(f"Message delivery failed: {err}")
-    else:
-        logger.info(f"Message delivered to {msg.topic()} [{msg.partition()}]")
+producer = None
 
 
 @asynccontextmanager
@@ -57,6 +46,15 @@ async def lifespan(app: FastAPI):
         database=PG_DATABASE
     )
     logger.info("DB connection pool initialized.")
+
+    # Initialize Kafka Producer
+    global producer
+    producer = AIOKafkaProducer(
+        bootstrap_servers=KAFKA_BROKERS,
+        client_id='job-api-producer'
+    )
+    await producer.start()
+    logger.info("Kafka producer started.")
 
     # Tablo oluştur
     conn = db_pool.getconn()
@@ -84,7 +82,9 @@ async def lifespan(app: FastAPI):
     yield  # ── Uygulama çalışıyor ──
 
     # ── Shutdown ──
-    producer.flush(timeout=5)
+    if producer:
+        await producer.stop()
+        logger.info("Kafka producer stopped.")
     if db_pool:
         db_pool.closeall()
     logger.info("Cleanup complete.")
@@ -128,16 +128,12 @@ async def create_chat_completion(request: Request):
     }
     
     try:
-        producer.produce(
+        await producer.send_and_wait(
             KAFKA_TOPIC,
-            key=job_id,
-            value=json.dumps(kafka_payload),
-            on_delivery=delivery_report
+            key=job_id.encode('utf-8'),
+            value=json.dumps(kafka_payload).encode('utf-8')
         )
-        # Flush with timeout (saniye) — sonsuz bloklamayı önler
-        remaining = producer.flush(timeout=5)
-        if remaining > 0:
-            logger.warning(f"Kafka flush timeout: {remaining} message(s) still in queue")
+        logger.info(f"Message delivered to {KAFKA_TOPIC} [job_id={job_id}]")
     except Exception as e:
         logger.error(f"Failed to send job to Kafka: {e}")
         # Update job to FAILED in DB

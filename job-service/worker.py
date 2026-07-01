@@ -3,7 +3,7 @@ import json
 import logging
 import asyncio
 import signal
-from confluent_kafka import Consumer, KafkaError
+from aiokafka import AIOKafkaConsumer
 import httpx
 import psycopg2
 from psycopg2.extras import Json
@@ -85,7 +85,7 @@ def update_job_status(job_id, status, result=None, error=None):
             db_pool.putconn(conn)
 
 
-async def process_job(job_id, payload, client, consumer):
+async def process_job(job_id, payload, client):
     logger.info(f"[job={job_id}] Processing...")
     await asyncio.to_thread(update_job_status, job_id, "PROCESSING")
 
@@ -108,11 +108,6 @@ async def process_job(job_id, payload, client, consumer):
         logger.error(f"[job={job_id}] Unexpected error: {e}")
         await asyncio.to_thread(update_job_status, job_id, "FAILED", error=str(e))
 
-    try:
-        await asyncio.to_thread(consumer.commit, asynchronous=False)
-    except Exception as e:
-        logger.warning(f"[job={job_id}] Offset commit failed (non-fatal): {e}")
-
 
 async def main():
     logger.info("═══════════════════════════════════════════════════")
@@ -126,16 +121,16 @@ async def main():
 
     await asyncio.to_thread(init_db_pool)
 
-    consumer = Consumer({
-        'bootstrap.servers': KAFKA_BROKERS,
-        'group.id': KAFKA_GROUP_ID,
-        'auto.offset.reset': 'earliest',
-        'enable.auto.commit': False,
-    })
-    consumer.subscribe([KAFKA_TOPIC])
+    consumer = AIOKafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_BROKERS,
+        group_id=KAFKA_GROUP_ID,
+        auto_offset_reset='earliest',
+        enable_auto_commit=False
+    )
+    await consumer.start()
     logger.info(f"Subscribed to topic: {KAFKA_TOPIC}")
 
-    active_tasks = set()
     shutdown_event = asyncio.Event()
 
     def signal_handler():
@@ -152,49 +147,45 @@ async def main():
     async with httpx.AsyncClient() as client:
         try:
             while not shutdown_event.is_set():
-                msg = await asyncio.to_thread(consumer.poll, 1.0)
-
-                if msg is None:
+                # Poll a batch of messages
+                msg_pack = await consumer.getmany(timeout_ms=1000, max_records=CONCURRENCY_LIMIT)
+                
+                if not msg_pack:
                     continue
-                if msg.error():
-                    if msg.error().code() == KafkaError._PARTITION_EOF:
-                        logger.debug("Reached end of partition")
-                    else:
-                        logger.error(f"Kafka error: {msg.error()}")
-                    continue
+                
+                tasks = []
+                for tp, msgs in msg_pack.items():
+                    for msg in msgs:
+                        try:
+                            data = json.loads(msg.value.decode('utf-8'))
+                            job_id = data.get('job_id')
+                            payload = data.get('payload')
 
-                try:
-                    data = json.loads(msg.value().decode('utf-8'))
-                    job_id = data.get('job_id')
-                    payload = data.get('payload')
+                            if not job_id or not payload:
+                                logger.error(f"Invalid message format, skipping: {data}")
+                                continue
 
-                    if not job_id or not payload:
-                        logger.error(f"Invalid message format, skipping: {data}")
-                        continue
-
-                except Exception as e:
-                    logger.error(f"Failed to parse Kafka message: {e}")
-                    continue
-
-                async def guarded_process(jid, pl):
-                    async with semaphore:
-                        await process_job(jid, pl, client, consumer)
-
-                task = asyncio.create_task(guarded_process(job_id, payload))
-
-                active_tasks.add(task)
-                task.add_done_callback(active_tasks.discard)
+                            # Create processing task
+                            task = asyncio.create_task(process_job(job_id, payload, client))
+                            tasks.append(task)
+                        except Exception as e:
+                            logger.error(f"Failed to parse Kafka message: {e}")
+                
+                if tasks:
+                    logger.debug(f"Awaiting {len(tasks)} concurrent tasks...")
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Safe commit only after the entire batch is completed
+                    try:
+                        await consumer.commit()
+                    except Exception as e:
+                        logger.warning(f"Batch offset commit failed (non-fatal): {e}")
 
         except asyncio.CancelledError:
             logger.info("Main loop cancelled.")
         finally:
-            if active_tasks:
-                logger.info(f"Waiting for {len(active_tasks)} active task(s) to finish...")
-                await asyncio.gather(*active_tasks, return_exceptions=True)
-                logger.info("All active tasks completed.")
-
-            consumer.close()
-            logger.info("Kafka consumer closed.")
+            await consumer.stop()
+            logger.info("Kafka consumer stopped.")
 
             if db_pool:
                 db_pool.closeall()
