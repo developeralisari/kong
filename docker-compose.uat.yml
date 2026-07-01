@@ -81,8 +81,8 @@ services:
       # `,kafka-log-oss` eklenir. Eğer .env'de boşsa default `bundled,medasista-validator`
       # kullanılır. Kullanıcı Admin UI'dan kafka-log-oss plugin'ini route/service'lere
       # bağlayabilir.
-      KONG_PLUGINS: ${KONG_PLUGINS:-bundled,medasista-validator},kafka-log-oss
-      KONG_ADMIN_GUI_CUSTOM_PLUGINS: ${KONG_ADMIN_GUI_CUSTOM_PLUGINS:-medasista-validator},kafka-log-oss
+      KONG_PLUGINS: ${KONG_PLUGINS:-bundled,medasista-validator}
+      KONG_ADMIN_GUI_CUSTOM_PLUGINS: ${KONG_ADMIN_GUI_CUSTOM_PLUGINS:-medasista-validator}
       KONG_UNTRUSTED_LUA_REQUIRES: ${KONG_UNTRUSTED_LUA_REQUIRES}
       KONG_LUA_PACKAGE_PATH: ${KONG_LUA_PACKAGE_PATH}
       KONG_ADMIN_GUI_LISTEN: "0.0.0.0:${KONG_MANAGER_PORT}"
