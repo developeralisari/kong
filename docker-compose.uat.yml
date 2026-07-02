@@ -50,6 +50,10 @@ services:
         max-file: "3"
     container_name: ${KONG_CONTAINER_NAME}
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     deploy:
       resources:
         limits:
