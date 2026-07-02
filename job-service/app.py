@@ -38,8 +38,8 @@ async def lifespan(app: FastAPI):
     global db_pool
     # ── Startup ──
     db_pool = pool.ThreadedConnectionPool(
-        minconn=2,
-        maxconn=10,
+        minconn=10,
+        maxconn=100,
         host=PG_HOST,
         port=PG_PORT,
         user=PG_USER,
