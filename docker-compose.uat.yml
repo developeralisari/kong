@@ -441,6 +441,7 @@ services:
         max-file: "3"
     container_name: ${JOBS_PG_CONTAINER_NAME}
     restart: unless-stopped
+    command: postgres -c max_connections=500
     deploy:
       resources:
         limits:

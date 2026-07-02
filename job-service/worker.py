@@ -43,15 +43,15 @@ db_pool = None
 def init_db_pool():
     global db_pool
     db_pool = pool.ThreadedConnectionPool(
-        minconn=2,
-        maxconn=20,
+        minconn=10,
+        maxconn=150,
         host=PG_HOST,
         port=PG_PORT,
         user=PG_USER,
         password=PG_PASSWORD,
         database=PG_DATABASE
     )
-    logger.info("DB connection pool initialized (min=2, max=20).")
+    logger.info("DB connection pool initialized (min=10, max=150).")
 
 
 def update_job_status(job_id, status, result=None, error=None):
