@@ -92,56 +92,37 @@ async def safe_update_job_status(*args, **kwargs):
         await asyncio.to_thread(update_job_status, *args, **kwargs)
 
 
-def calculate_text_tokens(text):
-    """
-    Text string için yaklaşık token sayısı hesaplar.
-    Türkçe ve İngilizce karışık metinlerde ortalama 1 token ≈ 3.5 karakter.
-    """
-    if not text:
-        return 0
-    return max(1, len(text) // 4)
-
-
 def calculate_billable_input_tokens(payload):
     """
     Müşteriye faturalanacak input token sayısını hesaplar.
 
-    Bileşenler:
-      1. System prompt text token sayısı
-      2. User message text token sayısı (output_template dahil)
-      3. Base64 image karakter sayısından BPE tahmini
-
-    Base64 BPE tahmini: Her 4 base64 karakteri ortalama 2.5 token üretir
-    (SentencePiece BPE, yüksek entropi base64 için).
+    Tüm bileşenler aynı BPE tahmini ile hesaplanır:
+    Her 4 karakter ≈ 2.5 token (len * 25 // 40)
     """
     messages = payload.get("messages", [])
-    text_tokens = 0
-    image_tokens = 0
+    total_chars = 0
 
     for msg in messages:
         content = msg.get("content")
 
-        # String content (system prompt)
         if isinstance(content, str):
-            text_tokens += calculate_text_tokens(content)
+            total_chars += len(content)
             continue
 
-        # Multimodal content array (user message)
         if isinstance(content, list):
             for part in content:
                 if part.get("type") == "text":
-                    text_tokens += calculate_text_tokens(part.get("text", ""))
+                    total_chars += len(part.get("text", ""))
                 elif part.get("type") == "image_url":
                     url = part.get("image_url", {}).get("url", "")
                     if url.startswith("data:image/"):
                         try:
                             _, b64_data = url.split(",", 1)
-                            # Her 4 base64 char ≈ 2.5 token (BPE tahmini)
-                            image_tokens = len(b64_data) * 25 // 40
+                            total_chars += len(b64_data)
                         except ValueError:
                             pass
 
-    return text_tokens + image_tokens
+    return max(1, total_chars * 25 // 40)
 
 
 def sanitize_image_payload(payload):
