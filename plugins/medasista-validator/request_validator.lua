@@ -678,9 +678,11 @@ function M.validate(plugin_conf)
     body.output_template = nil
     body.metadata = nil
 
-    -- Model ve streaming config'den
+    -- Model, streaming ve generation parametreleri
     body.model = cfg.model_name
     body.stream = cfg.stream_enabled
+    body.temperature = 0.0
+    body.repetition_penalty = 1.15
 
     -- ASYNC WORKER ICIN METADATA: 
     -- Worker'ın response'u formatlayabilmesi için hesaplanan token'ı iletiyoruz.
