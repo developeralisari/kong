@@ -471,6 +471,22 @@ function M.validate(plugin_conf)
             string.format("Max %dMB base64", cfg.max_file_size_bytes / 1024 / 1024))
     end
 
+    -- 4a2. Image token limit kontrolü (1M token)
+    -- Formül: base64 karakter * 25 / 40
+    local pure_b64 = body.image
+    local comma_pos = string.find(pure_b64, ",", 1, true)
+    if comma_pos then
+        pure_b64 = string.sub(pure_b64, comma_pos + 1)
+    end
+    local estimated_image_tokens = math.floor(#pure_b64 * 25 / 40)
+    local max_image_tokens = 1000000
+    if estimated_image_tokens > max_image_tokens then
+        return error_response(413, "ValidationError",
+            "Image token limit exceeded",
+            string.format("Estimated %d tokens, max allowed %d tokens",
+                estimated_image_tokens, max_image_tokens))
+    end
+
     -- 4b. Base64 decode
     local raw_bytes = decode_base64(body.image)
     if not raw_bytes then
