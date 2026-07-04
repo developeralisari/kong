@@ -1,14 +1,12 @@
 scrape_configs:
   - job_name: 'kong'
     metrics_path: /metrics
-    scheme: https
+    scheme: http
     scrape_interval: 30s
     scrape_timeout: 10s
-    tls_config:
-      insecure_skip_verify: true   # UAT self-signed Cloudflare cert; prod'da kaldır
     static_configs:
       - targets:
-          - 'uat-kong-gateway:18443'   # container_name:proxy_https_port
+          - 'uat-kong-gateway:18100'   # container_name:KONG_STATUS_PORT (internal HTTP)
         labels:
           environment: 'uat'
           cluster: 'medasista-kong'

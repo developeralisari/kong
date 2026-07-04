@@ -192,38 +192,37 @@ services:
       - dokploy-network
 
   # ─────────────────────────────────────────────────────────────────────
-  # victoria-metrics — DEVRE DIŞI (UAT'ta kullanılmıyor, ileride açılabilir)
-  # Aktif etmek için: aşağıdaki tüm satırlardaki başındaki `# ` kaldır,
-  # volumes bölümündeki `victoria-metrics-data` satırını da aç.
+  # victoria-metrics — Prometheus-compatible TSDB
+  # Kong Prometheus plugin metriklerini scrape eder ve saklar.
   # ─────────────────────────────────────────────────────────────────────
-  # victoria-metrics:
-  #   image: victoriametrics/victoria-metrics:${VICTORIA_METRICS_VERSION}
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "50m"
-  #       max-file: "3"
-  #   container_name: ${VICTORIA_METRICS_CONTAINER_NAME}
-  #   restart: unless-stopped
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: ${VICTORIA_METRICS_MEMORY_LIMIT}
-  #   ports:
-  #     - "${VICTORIA_METRICS_PORT}:${VICTORIA_METRICS_PORT}"
-  #   command:
-  #     - "--storageDataPath=/storage"
-  #     - "--retentionPeriod=${VICTORIA_METRICS_RETENTION_DAYS}"
-  #     - "--httpListenAddr=:${VICTORIA_METRICS_PORT}"
-  #     - "--memory.allowedPercent=${VICTORIA_METRICS_MEMORY_PERCENT}"
-  #     - "--search.maxMemoryPerQuery=0"
-  #     - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
-  #   volumes:
-  #     - victoria-metrics-data:/storage
-  #     - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
-  #   networks:
-  #     - dokploy-network
-  #     - kong-net
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:${VICTORIA_METRICS_VERSION}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    container_name: ${VICTORIA_METRICS_CONTAINER_NAME}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${VICTORIA_METRICS_MEMORY_LIMIT}
+    ports:
+      - "${VICTORIA_METRICS_PORT}:${VICTORIA_METRICS_PORT}"
+    command:
+      - "--storageDataPath=/storage"
+      - "--retentionPeriod=${VICTORIA_METRICS_RETENTION_DAYS}"
+      - "--httpListenAddr=:${VICTORIA_METRICS_PORT}"
+      - "--memory.allowedPercent=${VICTORIA_METRICS_MEMORY_PERCENT}"
+      - "--search.maxMemoryPerQuery=0"
+      - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
+    volumes:
+      - victoria-metrics-data:/storage
+      - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
+    networks:
+      - dokploy-network
+      - kong-net
 
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION}
@@ -274,8 +273,8 @@ services:
     networks:
       - dokploy-network
       - kong-net
-    # depends_on:
-    #   - victoria-metrics   # ← victoria-metrics devre dışı (ileride açılırsa geri al)
+    depends_on:
+      - victoria-metrics
     # EXACT SAME PATTERN AS KONG: Cloudflare Access is enabled on this domain,
     # so Cloudflare handles TLS termination and authentication. Cloudflare Tunnel
     # sends plain HTTP to Traefik on the 'web' entrypoint. We inject
@@ -513,8 +512,8 @@ services:
 volumes:
   kong-postgres-data:
     name: ${KONG_POSTGRES_VOLUME_NAME}
-  # victoria-metrics-data:   # ← victoria-metrics devre dışı
-  #   name: ${VICTORIA_METRICS_VOLUME_NAME}
+  victoria-metrics-data:
+    name: ${VICTORIA_METRICS_VOLUME_NAME}
   grafana-data:
     name: ${GRAFANA_VOLUME_NAME}
   # loki-data:               # ← loki devre dışı
