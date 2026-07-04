@@ -1,37 +1,17 @@
 {
-  "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
-  },
-  "description": "Kong OSS prometheus plugin metrikleri: request rate, latency, error rate, top routes, datastore durumu. datasource: VictoriaMetrics.",
+  "annotations": { "list": [] },
+  "description": "Kong Gateway temel metrikleri",
   "editable": true,
-  "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
   "uid": "kong-uat-overview",
   "title": "Kong UAT — Overview",
-  "tags": ["kong", "uat", "medasista"],
+  "tags": ["kong", "uat"],
   "timezone": "browser",
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
+  "time": { "from": "now-1h", "to": "now" },
   "refresh": "30s",
   "schemaVersion": 39,
-  "version": 1,
-  "weekStart": "",
+  "version": 2,
   "templating": {
     "list": [
       {
@@ -39,376 +19,113 @@
         "type": "datasource",
         "label": "Datasource",
         "query": "prometheus",
-        "current": {
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
-        },
+        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
         "hide": 0
-      },
-      {
-        "name": "service",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
-        "label": "Service",
-        "query": "label_values(kong_request_count, service)",
-        "refresh": 2,
-        "includeAll": true,
-        "multi": true,
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
-      },
-      {
-        "name": "route",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
-        "label": "Route",
-        "query": "label_values(kong_request_count{service=~\"$service\"}, route)",
-        "refresh": 2,
-        "includeAll": true,
-        "multi": true,
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Request Rate (req/s, by Service)",
-      "description": "Kong üzerinden geçen isteklerin saniye başına sayısı, service bazında ayrıştırılmış.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "drawStyle": "line"
-          },
-          "color": { "mode": "palette-classic" }
-        }
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (service) (rate(kong_request_count{service=~\"$service\"}[$__rate_interval]))",
-          "legendFormat": "{{service}}"
-        }
-      ]
+      "type": "stat",
+      "title": "Total Requests (5m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [{"color": "#73BF69", "value": null}] } } },
+      "targets": [{ "refId": "A", "expr": "sum(increase(kong_http_requests_total[$__rate_interval]))" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
     },
     {
       "id": 2,
-      "type": "timeseries",
-      "title": "Latency (ms) — p50 / p95 / p99",
-      "description": "Toplam request latency (Kong + upstream). Histogram_quantile kullanır.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 5,
-            "drawStyle": "line"
-          }
-        }
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(kong_latency_ms_bucket{service=~\"$service\",route=~\"$route\"}[$__rate_interval])))",
-          "legendFormat": "p50"
-        },
-        {
-          "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_latency_ms_bucket{service=~\"$service\",route=~\"$route\"}[$__rate_interval])))",
-          "legendFormat": "p95"
-        },
-        {
-          "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_latency_ms_bucket{service=~\"$service\",route=~\"$route\"}[$__rate_interval])))",
-          "legendFormat": "p99"
-        }
-      ]
+      "type": "stat",
+      "title": "Error Rate (5xx)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "steps": [{"color": "#73BF69", "value": null}, {"color": "#FF5733", "value": 0.01}] } } },
+      "targets": [{ "refId": "A", "expr": "sum(rate(kong_http_requests_total{code=~\"5..\"}[$__rate_interval])) / sum(rate(kong_http_requests_total[$__rate_interval]))" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
     },
     {
       "id": 3,
-      "type": "timeseries",
-      "title": "Error Rate (5xx, %)",
-      "description": "5xx yanıtların toplam isteğe oranı. Service bazında.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.01 },
-              { "color": "red", "value": 0.05 }
-            ]
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "drawStyle": "line"
-          }
-        }
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "100 * sum by (service) (rate(kong_http_status{service=~\"$service\",code=~\"5..\"}[$__rate_interval])) / sum by (service) (rate(kong_http_status{service=~\"$service\"}[$__rate_interval]))",
-          "legendFormat": "{{service}} 5xx %"
-        }
-      ]
+      "type": "stat",
+      "title": "Avg Latency (p95)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "steps": [{"color": "#73BF69", "value": null}, {"color": "#FADE2A", "value": 1000}, {"color": "#FF5733", "value": 5000}] } } },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_http_latency_ms_bucket[$__rate_interval])))" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
     },
     {
       "id": 4,
-      "type": "timeseries",
-      "title": "Status Code Dağılımı (req/s, by Code)",
-      "description": "2xx / 3xx / 4xx / 5xx gruplarına göre istek oranı.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "drawStyle": "line",
-            "stacking": { "mode": "normal" }
-          }
-        }
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean"] },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (code) (rate(kong_http_status{service=~\"$service\"}[$__rate_interval]))",
-          "legendFormat": "{{code}}"
-        }
-      ]
+      "type": "stat",
+      "title": "Active Services",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [{"color": "#73BF69", "value": null}] } } },
+      "targets": [{ "refId": "A", "expr": "count(count by (service) (kong_http_requests_total))" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
     },
     {
       "id": 5,
-      "type": "table",
-      "title": "Top Routes (son 5 dakika, total requests)",
-      "description": "En çok istek alan rotalar. Route + Service + total + RPS + hata sayısı.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
-      "options": {
-        "showHeader": true,
-        "sortBy": [{ "displayName": "Requests", "desc": true }],
-        "footer": { "show": false }
-      },
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Time": true, "Value": true, "__name__": true, "instance": true, "job": true, "code": true },
-            "renameByName": {
-              "route": "Route",
-              "service": "Service",
-              "Value": "Requests"
-            }
-          }
-        }
-      ],
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "topk(10, sum by (route, service) (increase(kong_request_count{service=~\"$service\"}[5m])))",
-          "format": "table",
-          "instant": true
-        }
-      ]
+      "type": "timeseries",
+      "title": "Request Rate (req/s)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 15, "drawStyle": "line", "showPoints": "never" } } },
+      "targets": [{ "refId": "A", "expr": "sum by (service) (rate(kong_http_requests_total[$__rate_interval]))", "legendFormat": "{{service}}" }]
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Kong Latency vs Upstream Latency (p95, ms)",
-      "description": "Kong'un kendi işlem süresi vs upstream (RunPod) yanıt süresi. Aradaki fark Kong overhead'ini gösterir.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 5,
-            "drawStyle": "line"
-          }
-        }
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean"] },
-        "tooltip": { "mode": "multi" }
-      },
+      "title": "Latency p50 / p95 / p99",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 8, "drawStyle": "line" } } },
       "targets": [
-        {
-          "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_kong_latency_ms_bucket{service=~\"$service\"}[$__rate_interval])))",
-          "legendFormat": "Kong overhead p95"
-        },
-        {
-          "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_upstream_latency_ms_bucket{service=~\"$service\"}[$__rate_interval])))",
-          "legendFormat": "Upstream p95"
-        }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(kong_http_latency_ms_bucket[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(kong_http_latency_ms_bucket[$__rate_interval])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(kong_http_latency_ms_bucket[$__rate_interval])))", "legendFormat": "p99" }
       ]
     },
     {
       "id": 7,
-      "type": "stat",
-      "title": "Datastore Reachable",
-      "description": "Kong'un DB (Postgres) bağlantı durumu. 0 = kopuk, 1 = bağlı.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 25 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
-            ]
-          },
-          "mappings": [
-            { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } }
-          ]
-        }
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "min(kong_datastore_reachable)",
-          "legendFormat": "DB"
-        }
-      ]
+      "type": "timeseries",
+      "title": "Status Code (req/s)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20, "drawStyle": "bars", "stacking": { "mode": "normal" } } } },
+      "targets": [{ "refId": "A", "expr": "sum by (code) (rate(kong_http_requests_total[$__rate_interval]))", "legendFormat": "{{code}}" }]
     },
     {
       "id": 8,
-      "type": "stat",
-      "title": "Total Requests (5m)",
-      "description": "Son 5 dakikadaki toplam istek sayısı.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 25 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "blue", "value": null }
-            ]
-          }
-        }
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
-      },
+      "type": "timeseries",
+      "title": "Bandwidth (bytes/s)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" } } },
       "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(increase(kong_request_count{service=~\"$service\"}[5m]))",
-          "legendFormat": "Total"
-        }
+        { "refId": "A", "expr": "sum(rate(kong_bandwidth_bytes{direction=\"ingress\"}[$__rate_interval]))", "legendFormat": "Ingress" },
+        { "refId": "B", "expr": "sum(rate(kong_bandwidth_bytes{direction=\"egress\"}[$__rate_interval]))", "legendFormat": "Egress" }
       ]
     },
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Bandwidth (bytes/s, by Service)",
-      "description": "Kong üzerinden geçen toplam trafik (request + response).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 25 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "Bps",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "drawStyle": "line"
-          }
-        }
-      },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (service) (rate(kong_bandwidth_bytes{service=~\"$service\"}[$__rate_interval]))",
-          "legendFormat": "{{service}}"
-        }
-      ]
+      "title": "Upstream Latency (p95, ms)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" } } },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, service) (rate(kong_upstream_latency_ms_bucket[$__rate_interval])))", "legendFormat": "{{service}}" }]
+    },
+    {
+      "id": 10,
+      "type": "bargauge",
+      "title": "Top Routes (5m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [{"color": "#73BF69", "value": null}] } } },
+      "targets": [{ "refId": "A", "expr": "topk(10, sum by (route) (increase(kong_http_requests_total[5m])))", "legendFormat": "{{route}}" }],
+      "options": { "orientation": "horizontal", "displayMode": "gradient" }
     }
   ]
 }
