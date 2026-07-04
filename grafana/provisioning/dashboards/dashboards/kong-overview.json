@@ -115,7 +115,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" } } },
-      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, service) (rate(kong_kong_upstream_latency_ms_bucket[$__rate_interval])))", "legendFormat": "{{service}}" }]
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, service) (rate(kong_upstream_latency_ms_bucket[$__rate_interval])))", "legendFormat": "{{service}}" }]
     },
     {
       "id": 10,
