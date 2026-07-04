@@ -92,6 +92,58 @@ async def safe_update_job_status(*args, **kwargs):
         await asyncio.to_thread(update_job_status, *args, **kwargs)
 
 
+def calculate_text_tokens(text):
+    """
+    Text string için yaklaşık token sayısı hesaplar.
+    Türkçe ve İngilizce karışık metinlerde ortalama 1 token ≈ 3.5 karakter.
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def calculate_billable_input_tokens(payload):
+    """
+    Müşteriye faturalanacak input token sayısını hesaplar.
+
+    Bileşenler:
+      1. System prompt text token sayısı
+      2. User message text token sayısı (output_template dahil)
+      3. Base64 image karakter sayısından BPE tahmini
+
+    Base64 BPE tahmini: Her 4 base64 karakteri ortalama 2.5 token üretir
+    (SentencePiece BPE, yüksek entropi base64 için).
+    """
+    messages = payload.get("messages", [])
+    text_tokens = 0
+    image_tokens = 0
+
+    for msg in messages:
+        content = msg.get("content")
+
+        # String content (system prompt)
+        if isinstance(content, str):
+            text_tokens += calculate_text_tokens(content)
+            continue
+
+        # Multimodal content array (user message)
+        if isinstance(content, list):
+            for part in content:
+                if part.get("type") == "text":
+                    text_tokens += calculate_text_tokens(part.get("text", ""))
+                elif part.get("type") == "image_url":
+                    url = part.get("image_url", {}).get("url", "")
+                    if url.startswith("data:image/"):
+                        try:
+                            _, b64_data = url.split(",", 1)
+                            # Her 4 base64 char ≈ 2.5 token (BPE tahmini)
+                            image_tokens = len(b64_data) * 25 // 40
+                        except ValueError:
+                            pass
+
+    return text_tokens + image_tokens
+
+
 def sanitize_image_payload(payload):
     """
     Kafka JSON serialization sırasında base64 verisinde oluşabilecek
@@ -114,16 +166,12 @@ def sanitize_image_payload(payload):
             if not url.startswith("data:image/"):
                 continue
 
-            # data:image/<format>;base64, prefix'ini ayır
             try:
                 header, b64_data = url.split(",", 1)
             except ValueError:
                 continue
 
-            # Base64'teki whitespace, newline, CR karakterlerini temizle
             b64_clean = b64_data.replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
-
-            # Temizlenmiş data URI'yi geri yaz
             image_url_obj["url"] = f"{header},{b64_clean}"
             logger.info(f"Image sanitized: {len(b64_data)} -> {len(b64_clean)} chars")
 
@@ -135,8 +183,10 @@ async def process_job(job_id, payload, client):
     await safe_update_job_status(job_id, "PROCESSING")
 
     try:
-        meta = payload.pop("medasista_metadata", {})
-        image_tokens = meta.get("image_tokens", 0)
+        payload.pop("medasista_metadata", None)
+
+        # Müşteriye faturalanacak input token'ı hesapla (sanitize'dan ÖNCE)
+        billable_input_tokens = calculate_billable_input_tokens(payload)
 
         # Base64 verisini temizle — Kafka JSON round-trip sırasında
         # oluşan whitespace/escape sorunları vLLM'in görüntüyü text
@@ -153,21 +203,25 @@ async def process_job(job_id, payload, client):
             if choices and isinstance(choices, list) and choices[0].get("message"):
                 content = choices[0]["message"].get("content", "")
 
-            usage = raw_result.get("usage", {})
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            vllm_output_tokens = usage.get("completion_tokens", 0)
-            total_tokens = prompt_tokens + vllm_output_tokens
+            # Output tokens: vLLM'in gerçek üretim sayısı (güvenilir)
+            vllm_output_tokens = raw_result.get("usage", {}).get("completion_tokens", 0)
+
+            # Müşteriye gösterilecek usage:
+            # - input_tokens: bizim hesapladığımız (system + user text + image BPE)
+            # - output_tokens: vLLM'in gerçek completion token sayısı
+            # - total_tokens: input + output toplamı
+            total_tokens = billable_input_tokens + vllm_output_tokens
 
             simplified_result = {
                 "content": content,
                 "usage": {
-                    "input_tokens": prompt_tokens,
+                    "input_tokens": billable_input_tokens,
                     "output_tokens": vllm_output_tokens,
                     "total_tokens": total_tokens
                 }
             }
 
-            logger.info(f"[job={job_id}] Completed. Prompt: {prompt_tokens}, Output: {vllm_output_tokens}")
+            logger.info(f"[job={job_id}] Completed. Input(billable): {billable_input_tokens}, Output: {vllm_output_tokens}")
             await safe_update_job_status(job_id, "COMPLETED", result=simplified_result)
         else:
             error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
