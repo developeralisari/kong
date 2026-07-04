@@ -92,42 +92,82 @@ async def safe_update_job_status(*args, **kwargs):
         await asyncio.to_thread(update_job_status, *args, **kwargs)
 
 
+def sanitize_image_payload(payload):
+    """
+    Kafka JSON serialization sırasında base64 verisinde oluşabilecek
+    whitespace/newline/escape sorunlarını temizler.
+    vLLM'in data URI'yi image token olarak işlemesini garanti eder.
+    """
+    messages = payload.get("messages")
+    if not messages:
+        return payload
+
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if part.get("type") != "image_url":
+                continue
+            image_url_obj = part.get("image_url", {})
+            url = image_url_obj.get("url", "")
+            if not url.startswith("data:image/"):
+                continue
+
+            # data:image/<format>;base64, prefix'ini ayır
+            try:
+                header, b64_data = url.split(",", 1)
+            except ValueError:
+                continue
+
+            # Base64'teki whitespace, newline, CR karakterlerini temizle
+            b64_clean = b64_data.replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
+
+            # Temizlenmiş data URI'yi geri yaz
+            image_url_obj["url"] = f"{header},{b64_clean}"
+            logger.info(f"Image sanitized: {len(b64_data)} -> {len(b64_clean)} chars")
+
+    return payload
+
+
 async def process_job(job_id, payload, client):
     logger.info(f"[job={job_id}] Processing...")
     await safe_update_job_status(job_id, "PROCESSING")
 
     try:
-        # ASYNC WORKER RESPONSE FORMATTING:
-        # Kong's body_filter doesn't run on the GET polling endpoint's nested result.
-        # So we extract the tokens passed from Kong, pop the metadata so vLLM doesn't complain,
-        # and format the response right here before saving to the DB.
         meta = payload.pop("medasista_metadata", {})
         image_tokens = meta.get("image_tokens", 0)
+
+        # Base64 verisini temizle — Kafka JSON round-trip sırasında
+        # oluşan whitespace/escape sorunları vLLM'in görüntüyü text
+        # token olarak işlemesine neden olur
+        payload = sanitize_image_payload(payload)
 
         response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
 
         if response.status_code == 200:
             raw_result = response.json()
-            
-            # Format the response exactly like Kong's body_filter did
+
             content = ""
             choices = raw_result.get("choices", [])
             if choices and isinstance(choices, list) and choices[0].get("message"):
                 content = choices[0]["message"].get("content", "")
-                
-            vllm_output_tokens = raw_result.get("usage", {}).get("completion_tokens", 0)
-            total_tokens = image_tokens + vllm_output_tokens
-            
+
+            usage = raw_result.get("usage", {})
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            vllm_output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = prompt_tokens + vllm_output_tokens
+
             simplified_result = {
                 "content": content,
                 "usage": {
-                    "input_tokens": image_tokens,
+                    "input_tokens": prompt_tokens,
                     "output_tokens": vllm_output_tokens,
                     "total_tokens": total_tokens
                 }
             }
-            
-            logger.info(f"[job={job_id}] Completed successfully. Output tokens: {vllm_output_tokens}")
+
+            logger.info(f"[job={job_id}] Completed. Prompt: {prompt_tokens}, Output: {vllm_output_tokens}")
             await safe_update_job_status(job_id, "COMPLETED", result=simplified_result)
         else:
             error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
