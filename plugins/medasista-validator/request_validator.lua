@@ -567,6 +567,8 @@ function M.validate(plugin_conf)
 
     body.model = cfg.model_name
     body.stream = cfg.stream_enabled
+    body.temperature = 0.0
+    body.repetition_penalty = 1.15
 
     -- JSON encode
     local ok, encoded_or_err = pcall(cjson.encode, body)
