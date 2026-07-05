@@ -12,6 +12,7 @@ services:
       POSTGRES_USER: ${KONG_PG_USER}
       POSTGRES_PASSWORD: ${KONG_PG_PASSWORD}
       POSTGRES_DB: ${KONG_PG_DATABASE}
+      TZ: ${TZ}
     volumes:
       - kong-postgres-data:${POSTGRES_DATA_PATH}
     networks:
@@ -35,6 +36,7 @@ services:
       KONG_PG_USER: ${KONG_PG_USER}
       KONG_PG_PASSWORD: ${KONG_PG_PASSWORD}
       KONG_PG_DATABASE: ${KONG_PG_DATABASE}
+      TZ: ${TZ}
     depends_on:
       kong-database:
         condition: service_started
@@ -97,6 +99,7 @@ services:
       # Without this, Kong sees HTTP from Traefik but expects HTTPS (per KONG_ADMIN_GUI_URL),
       # triggering a 301 redirect loop (ERR_TOO_MANY_REDIRECTS).
       KONG_ADMIN_GUI_SSL: "off"
+      TZ: ${TZ}
     ports:
       - "${KONG_PROXY_HTTP_PORT}:${KONG_PROXY_HTTP_PORT}"
       - "${KONG_PROXY_HTTPS_PORT}:${KONG_PROXY_HTTPS_PORT}"
@@ -185,6 +188,7 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+      TZ: ${TZ}
     depends_on:
       kong:
         condition: service_started
@@ -217,6 +221,8 @@ services:
       - "--memory.allowedPercent=${VICTORIA_METRICS_MEMORY_PERCENT}"
       - "--search.maxMemoryPerQuery=0"
       - "--promscrape.config=/etc/victoriametrics/scrape.yaml"
+    environment:
+      TZ: ${TZ}
     volumes:
       - victoria-metrics-data:/storage
       - ./grafana/provisioning/scrape/scrape.yaml:/etc/victoriametrics/scrape.yaml:ro
@@ -264,6 +270,7 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
       GF_AUTH_BASIC_ENABLED: ${GF_AUTH_BASIC_ENABLED}
+      TZ: ${TZ}
     ports:
       - "${GRAFANA_PORT}:${GRAFANA_CONTAINER_PORT}"
     volumes:
@@ -379,6 +386,7 @@ services:
       # Kafka kapalı connection'a mesaj göndermeye çalışır → "err: closed, retryable: true"
       # ───────────────────────────────────────────────────────────────────
       KAFKA_CONNECTIONS_MAX_IDLE_MS: "540000"
+      TZ: ${TZ}
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
@@ -407,6 +415,7 @@ services:
       AUTH_TYPE: "DISABLED"
       # FRAMEWORK: kafka-ui reactive/Netty, NATIVE Tomcat-only — Netty'de NATIVE çalışmaz:
       SERVER_FORWARD_HEADERS_STRATEGY: "FRAMEWORK"
+      TZ: ${TZ}
     depends_on:
       - kafka
     networks:
@@ -449,6 +458,7 @@ services:
       POSTGRES_USER: ${JOBS_PG_USER}
       POSTGRES_PASSWORD: ${JOBS_PG_PASSWORD}
       POSTGRES_DB: ${JOBS_PG_DATABASE}
+      TZ: ${TZ}
     volumes:
       - jobs-postgres-data:/var/lib/postgresql
     networks:
@@ -475,6 +485,7 @@ services:
       PG_DATABASE: "${JOBS_PG_DATABASE}"
       JOB_REQUEST_PATH: "${JOB_REQUEST_PATH:-/v1/chat/completions}"
       JOB_POLLING_PATH: "${JOB_POLLING_PATH:-/v1/jobs/{job_id}}"
+      TZ: ${TZ}
     depends_on:
       - kafka
       - jobs-database
@@ -504,6 +515,7 @@ services:
       VLLM_URL: "${JOBS_VLLM_URL}"
       VLLM_TIMEOUT: "${VLLM_TIMEOUT:-600}"
       CONCURRENCY_LIMIT: "${JOBS_CONCURRENCY_LIMIT}"
+      TZ: ${TZ}
     depends_on:
       - kafka
       - jobs-database
