@@ -4,7 +4,7 @@ import logging
 import asyncio
 import signal
 import threading
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import httpx
 import psycopg2
 from psycopg2.extras import Json
@@ -51,13 +51,25 @@ JOB_DURATION = Histogram(
     ['consumer'],
     buckets=[1, 5, 10, 30, 60, 120, 300, 600]
 )
+JOBS_RETRIED = Counter(
+    'medgemma_jobs_retried_total',
+    'Total jobs sent back for retry',
+    ['consumer']
+)
+JOBS_DLQ = Counter(
+    'medgemma_jobs_dlq_total',
+    'Total jobs sent to dead letter queue',
+    ['consumer']
+)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Environment variables
 # ═══════════════════════════════════════════════════════════════════════════
 KAFKA_BROKERS = os.environ.get('KAFKA_BROKERS', 'kafka:9092')
 KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'llm-jobs')
+KAFKA_DLQ_TOPIC = os.environ.get('KAFKA_DLQ_TOPIC', 'llm-jobs-dlq')
 KAFKA_GROUP_ID = os.environ.get('KAFKA_GROUP_ID', 'llm-jobs-worker-group')
+MAX_RETRIES = int(os.environ.get('MAX_RETRIES', '3'))
 
 PG_HOST = os.environ.get('PG_HOST', 'kong-database')
 PG_PORT = os.environ.get('PG_PORT', '5432')
@@ -193,8 +205,36 @@ def sanitize_image_payload(payload):
     return payload
 
 
-async def process_job(job_id, payload, client, consumer="default"):
-    logger.info(f"[job={job_id}] Processing...")
+async def handle_failure(job_id, payload, consumer_name, retry_count, error_msg, producer):
+    """Retry logic: retry < MAX_RETRIES → requeue, else → DLQ"""
+    if retry_count < MAX_RETRIES:
+        retry_msg = json.dumps({
+            "job_id": job_id,
+            "payload": payload,
+            "consumer": consumer_name,
+            "retry_count": retry_count + 1
+        }).encode('utf-8')
+        await producer.send_and_wait(KAFKA_TOPIC, retry_msg)
+        await safe_update_job_status(job_id, "RETRYING", error=f"[retry {retry_count + 1}/{MAX_RETRIES}] {error_msg}")
+        JOBS_RETRIED.labels(consumer=consumer_name).inc()
+        logger.warning(f"[job={job_id}] Retrying ({retry_count + 1}/{MAX_RETRIES}): {error_msg}")
+    else:
+        dlq_msg = json.dumps({
+            "job_id": job_id,
+            "payload": payload,
+            "consumer": consumer_name,
+            "retry_count": retry_count,
+            "error": error_msg
+        }).encode('utf-8')
+        await producer.send_and_wait(KAFKA_DLQ_TOPIC, dlq_msg)
+        await safe_update_job_status(job_id, "FAILED", error=f"[DLQ after {MAX_RETRIES} retries] {error_msg}")
+        JOBS_FAILED.labels(consumer=consumer_name).inc()
+        JOBS_DLQ.labels(consumer=consumer_name).inc()
+        logger.error(f"[job={job_id}] Moved to DLQ after {MAX_RETRIES} retries: {error_msg}")
+
+
+async def process_job(job_id, payload, client, producer, consumer="default", retry_count=0):
+    logger.info(f"[job={job_id}] Processing (attempt {retry_count + 1})...")
     await safe_update_job_status(job_id, "PROCESSING")
 
     import time
@@ -203,12 +243,8 @@ async def process_job(job_id, payload, client, consumer="default"):
     try:
         payload.pop("medasista_metadata", None)
 
-        # Müşteriye faturalanacak input token'ı hesapla (sanitize'dan ÖNCE)
         billable_input_tokens = calculate_billable_input_tokens(payload)
 
-        # Base64 verisini temizle — Kafka JSON round-trip sırasında
-        # oluşan whitespace/escape sorunları vLLM'in görüntüyü text
-        # token olarak işlemesine neden olur
         payload = sanitize_image_payload(payload)
 
         response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
@@ -221,13 +257,7 @@ async def process_job(job_id, payload, client, consumer="default"):
             if choices and isinstance(choices, list) and choices[0].get("message"):
                 content = choices[0]["message"].get("content", "")
 
-            # Output tokens: vLLM'in gerçek üretim sayısı (güvenilir)
             vllm_output_tokens = raw_result.get("usage", {}).get("completion_tokens", 0)
-
-            # Müşteriye gösterilecek usage:
-            # - input_tokens: bizim hesapladığımız (system + user text + image BPE)
-            # - output_tokens: vLLM'in gerçek completion token sayısı
-            # - total_tokens: input + output toplamı
             total_tokens = billable_input_tokens + vllm_output_tokens
 
             simplified_result = {
@@ -248,18 +278,14 @@ async def process_job(job_id, payload, client, consumer="default"):
             JOB_DURATION.labels(consumer=consumer).observe(time.time() - start_time)
         else:
             error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
-            logger.error(f"[job={job_id}] {error_msg}")
-            await safe_update_job_status(job_id, "FAILED", error=error_msg)
-            JOBS_FAILED.labels(consumer=consumer).inc()
+            await handle_failure(job_id, payload, consumer, retry_count, error_msg, producer)
     except httpx.TimeoutException:
         error_msg = f"vLLM timeout after {VLLM_TIMEOUT}s"
-        logger.error(f"[job={job_id}] {error_msg}")
-        await safe_update_job_status(job_id, "FAILED", error=error_msg)
-        JOBS_FAILED.labels(consumer=consumer).inc()
+        await handle_failure(job_id, payload, consumer, retry_count, error_msg, producer)
     except Exception as e:
-        logger.error(f"[job={job_id}] Unexpected error: {e}")
-        await safe_update_job_status(job_id, "FAILED", error=str(e))
-        JOBS_FAILED.labels(consumer=consumer).inc()
+        error_msg = str(e)
+        logger.error(f"[job={job_id}] Unexpected error: {error_msg}")
+        await handle_failure(job_id, payload, consumer, retry_count, error_msg, producer)
 
 
 async def main():
@@ -303,7 +329,7 @@ async def main():
             await asyncio.sleep(2)
 
     global db_semaphore
-    db_semaphore = asyncio.Semaphore(15)  # Limit DB concurrent operations to prevent pool exhaustion
+    db_semaphore = asyncio.Semaphore(50)
 
     shutdown_event = asyncio.Event()
 
@@ -318,15 +344,19 @@ async def main():
         except NotImplementedError:
             pass
 
-    async with httpx.AsyncClient() as client:
+    producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BROKERS)
+    await producer.start()
+    logger.info("Kafka producer started (for retry/DLQ)")
+
+    async with httpx.AsyncClient(limits=httpx.Limits(max_connections=150, max_keepalive_connections=100)) as client:
         try:
             while not shutdown_event.is_set():
                 # Poll a batch of messages
                 msg_pack = await consumer.getmany(timeout_ms=1000, max_records=CONCURRENCY_LIMIT)
-                
+
                 if not msg_pack:
                     continue
-                
+
                 tasks = []
                 for tp, msgs in msg_pack.items():
                     for msg in msgs:
@@ -335,13 +365,16 @@ async def main():
                             job_id = data.get('job_id')
                             payload = data.get('payload')
                             consumer_name = data.get('consumer', 'default')
+                            retry_count = data.get('retry_count', 0)
 
                             if not job_id or not payload:
                                 logger.error(f"Invalid message format, skipping: {data}")
                                 continue
 
-                            # Create processing task
-                            task = asyncio.create_task(process_job(job_id, payload, client, consumer=consumer_name))
+                            task = asyncio.create_task(process_job(
+                                job_id, payload, client, producer,
+                                consumer=consumer_name, retry_count=retry_count
+                            ))
                             tasks.append(task)
                         except Exception as e:
                             logger.error(f"Failed to parse Kafka message: {e}")
@@ -370,6 +403,8 @@ async def main():
         except asyncio.CancelledError:
             logger.info("Main loop cancelled.")
         finally:
+            await producer.stop()
+            logger.info("Kafka producer stopped.")
             await consumer.stop()
             logger.info("Kafka consumer stopped.")
 
