@@ -13,7 +13,7 @@
 -- Spesifikasyon:
 --   - Base64 JPG/PNG, max 896x896, max 10MB (varsayılan, hepsi config'den)
 --   - Zorunlu: category (whitelist), image
---   - Opsiyonel: output_template, max_tokens, metadata
+--   - Opsiyonel: output_template, metadata
 --
 -- Güvenlik Modülleri:
 --   1. Medical Safety Module (tıbbi tavsiye/teşhis/reçete - TR+EN)
@@ -50,9 +50,6 @@ local DEFAULT_CONFIG = {
     max_image_height = 896,
     allowed_categories = { "CXR", "MSK", "AXR", "MAM", "DER", "FUN", "PAT", "USG", "ECH", "MRG" },
     category_size_hints = {},
-    min_max_tokens = 1,
-    max_max_tokens = 131072,
-    default_max_tokens = 32768,
     template_min_length = 10,
     template_max_length = 500,
     max_body_fields = 20,
@@ -417,21 +414,7 @@ function M.validate(plugin_conf)
         end
     end
 
-    -- 5. max_tokens validasyonu (OPSİYONEL)
-    if body.max_tokens ~= nil then
-        local mt = tonumber(body.max_tokens)
-        if not mt or mt ~= math.floor(mt) then
-            return error_response(400, "ValidationError",
-                "max_tokens must be integer")
-        end
-        if mt < cfg.min_max_tokens or mt > cfg.max_max_tokens then
-            return error_response(400, "ValidationError",
-                "max_tokens out of range",
-                string.format("Allowed: %d-%d", cfg.min_max_tokens, cfg.max_max_tokens))
-        end
-    end
-
-    -- 6. output_template validasyonu (OPSİYONEL)
+    -- 5. output_template validasyonu (OPSİYONEL)
     if body.output_template ~= nil then
         if type(body.output_template) ~= "string" then
             return error_response(400, "ValidationError",
@@ -492,7 +475,7 @@ function M.validate(plugin_conf)
         end
     end
 
-    -- 7. metadata validasyonu (OPSİYONEL)
+    -- 6. metadata validasyonu (OPSİYONEL)
     if body.metadata ~= nil then
         if type(body.metadata) ~= "table" then
             return error_response(400, "ValidationError", "metadata must be object")

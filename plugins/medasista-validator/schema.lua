@@ -11,8 +11,8 @@
 --   map                     → key-value editor (CXR → Radyoloji - ...)
 --   record                  → nested form
 --
--- 26 toplam alan:
---   A) Kritik / deployment'a göre değişir  (18)
+-- 23 toplam alan:
+--   A) Kritik / deployment'a göre değişir  (15)
 --   B) Opsiyonel / güvenlik tuning         (8)
 --
 -- Schema format notu (Kong 3.9 metaschema):
@@ -29,7 +29,7 @@ return {
         fields = {
 
           -- ═══════════════════════════════════════════════════════════════
-          -- A. KRİTİK — Deployment'a göre değişir (18 alan)
+          -- A. KRİTİK — Deployment'a göre değişir (15 alan)
           -- ═══════════════════════════════════════════════════════════════
 
           -- 1. HTTP methods (multi-select). set + one_of → vue-multiselect chips.
@@ -99,75 +99,57 @@ return {
               },
           } },
 
-          -- 7. Min output tokens
-          { min_max_tokens = {
-              type = "number",
-              default = 1,
-          } },
-
-          -- 8. Max output tokens
-          { max_max_tokens = {
-              type = "number",
-              default = 131072,
-          } },
-
-          -- 9. Default output tokens (response'ta kullanılmıyor, sadece validation için)
-          { default_max_tokens = {
-              type = "number",
-              default = 32768,
-          } },
-
-          -- 10. Min output_template length (chars)
+          -- 7. Min output_template length (chars)
           { template_min_length = {
               type = "number",
               default = 10,
           } },
 
-          -- 11. Max output_template length (chars)
+          -- 8. Max output_template length (chars)
           { template_max_length = {
               type = "number",
               default = 500,
           } },
 
-          -- 12. Max body field count
+          -- 9. Max body field count
           { max_body_fields = {
               type = "number",
               default = 20,
           } },
 
-          -- 13. Max metadata nesting depth
+          -- 10. Max metadata nesting depth
           { max_metadata_depth = {
               type = "number",
               default = 3,
           } },
 
-          -- 14. Max metadata field count
+          -- 11. Max metadata field count
           { max_metadata_fields = {
               type = "number",
               default = 10,
           } },
 
-          -- 15. System prompt template (long string, {category} ve {output_template}
+          -- 12. System prompt template (long string, {category} ve {output_template}
           --     placeholder'ları runtime'da değiştirilir)
           { system_prompt_template = {
               type = "string",
               default = "Sen MedAsista altyapısında hizmet veren uzman bir {category} tıbbi görüntü analiz asistanısın. Sana gönderilen tıbbi görselleri analiz ederek kesinlikle tıbbi etik kurallarına uygun, yapılandırılmış bir rapor üretmelisin. Tahminlerinde yanılma payını minimize et ve doğruluğundan emin olmadığın durumlarda klinik korelasyon öner.\n\nKullanıcının istediği rapor formatı: {output_template}",
           } },
 
-          -- 16. Upstream LLM model adı
+          -- 13. Upstream LLM model adı
           { model_name = {
               type = "string",
               default = "google/medgemma-1.5-4b-it",
               description = "Upstream LLM model identifier (vLLM/HF format).",
           } },
 
-          -- 17. Streaming response (LLM'e gönderilecek body.stream alanı)
+          -- 14. Streaming response (LLM'e gönderilecek body.stream alanı)
           { stream_enabled = {
               type = "boolean",
               default = false,
           } },
 
-          -- 18. Enable image_tokens calculation (true: base64 string'ten token say,
+          -- 15. Enable image_tokens calculation (true: base64 string'ten token say,
           --     false: image_tokens=0, sadece output_tokens döner)
           { calculate_image_tokens = {
               type = "boolean",
