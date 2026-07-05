@@ -473,6 +473,8 @@ services:
       PG_USER: "${JOBS_PG_USER}"
       PG_PASSWORD: "${JOBS_PG_PASSWORD}"
       PG_DATABASE: "${JOBS_PG_DATABASE}"
+      JOB_REQUEST_PATH: "${JOB_REQUEST_PATH:-/v1/chat/completions}"
+      JOB_POLLING_PATH: "${JOB_POLLING_PATH:-/v1/jobs/{job_id}}"
     depends_on:
       - kafka
       - jobs-database

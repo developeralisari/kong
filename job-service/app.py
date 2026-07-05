@@ -22,6 +22,10 @@ db_pool = None
 KAFKA_BROKERS = os.environ.get('KAFKA_BROKERS', 'kafka:9092')
 KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'llm-jobs')
 
+# Dynamic route paths (configurable via Dokploy env)
+JOB_REQUEST_PATH = os.environ.get('JOB_REQUEST_PATH', '/v1/chat/completions')
+JOB_POLLING_PATH = os.environ.get('JOB_POLLING_PATH', '/v1/jobs/{job_id}')
+
 PG_HOST = os.environ.get('PG_HOST', 'kong-database')
 PG_PORT = os.environ.get('PG_PORT', '5432')
 PG_USER = os.environ.get('PG_USER', 'kong')
@@ -149,7 +153,7 @@ def db_update_job_failed(job_id, error_msg):
             db_pool.putconn(conn)
 
 
-@app.post("/v1/chat/completions")
+@app.post(JOB_REQUEST_PATH)
 async def create_chat_completion(request: Request):
     try:
         body = await request.json()
@@ -207,7 +211,7 @@ def db_get_job(job_id):
         if conn:
             db_pool.putconn(conn)
 
-@app.get("/v1/jobs/{job_id}")
+@app.get(JOB_POLLING_PATH)
 async def get_job_status(job_id: str):
     try:
         row = await asyncio.to_thread(db_get_job, job_id)
