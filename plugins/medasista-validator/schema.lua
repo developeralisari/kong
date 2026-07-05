@@ -200,7 +200,7 @@ return {
                 "dan mode",
                 "developer mode",
                 "sudo mode",
-                "bypass",
+                "bypass safety",
                 "ignore safety",
                 "ignore guidelines",
                 "respond without",
@@ -381,7 +381,33 @@ return {
               },
           } },
 
-          -- 24. Output sanitization patterns (XSS / HTML / JS / template).
+          -- 24. Model identity discovery patterns. set + string → tag input.
+          { model_identity_patterns = {
+              type = "set",
+              elements = { type = "string" },
+              default = {
+                "what model", "which model", "what ai", "which ai", "what llm",
+                "your model name", "model name", "what are you", "who are you",
+                "who made you", "who built you", "who trained you", "who created you",
+                "what version", "which version", "your version", "model version",
+                "what architecture", "what framework", "what technology",
+                "are you gpt", "are you gemma", "are you medgemma", "are you gemini",
+                "are you claude", "are you llama", "are you mistral",
+                "powered by", "built on", "based on what", "underlying model",
+                "foundation model", "base model", "fine-tuned from",
+                "hugging face", "huggingface", "google ai", "openai", "anthropic",
+                "meta ai", "deepmind",
+                "hangi model", "hangi yapay zeka", "model adın", "sen nesin",
+                "seni kim yaptı", "seni kim eğitti", "seni kim geliştirdi",
+                "hangi versiyon", "versiyonun ne", "altyapın ne", "teknolojin ne",
+                "sen gpt misin", "sen gemma mısın", "sen gemini misin",
+                "neye dayanıyorsun", "temel modelin ne", "hangi şirket",
+                "kimler geliştirdi", "açık kaynak mısın", "hangi dil modeli",
+              },
+              description = "Patterns to block model identity discovery attempts.",
+          } },
+
+          -- 25. Output sanitization patterns (XSS / HTML / JS / template).
           --     set + string → tag input.
           { output_sanitization_patterns = {
               type = "set",
@@ -453,25 +479,6 @@ return {
               },
           } },
 
-          -- 26. Category descriptions (map: code → human-readable label,
-          --     error response'larında ve admin UI'da gösterilir)
-          { category_descriptions = {
-              type = "map",
-              keys = { type = "string" },
-              values = { type = "string" },
-              default = {
-                ["CXR"] = "Radyoloji - Göğüs Grafisi",
-                ["MSK"] = "Radyoloji - Kas-İskelet Sistemi",
-                ["AXR"] = "Radyoloji - Ayakta Direkt Karın Grafisi",
-                ["MAM"] = "Mamografi",
-                ["DER"] = "Dermatoloji",
-                ["FUN"] = "Oftalmoloji",
-                ["PAT"] = "Dijital Patoloji",
-                ["USG"] = "Kardiyoloji/Ultrason - Ultrason Kesitleri",
-                ["ECH"] = "Kardiyoloji/Ultrason - Ekokardiyografi",
-                ["MRG"] = "Manyetik Rezonans Görüntüleme",
-              },
-          } },
 
         },
     } },
