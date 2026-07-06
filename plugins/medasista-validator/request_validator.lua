@@ -523,10 +523,12 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-    local user_text = "Lütfen aşağıdaki " .. category ..
-        " görüntüsünü inceleyip şu formata göre raporla.\n" ..
-        "Output ONLY the template fields below, no extra headers:\n\n" ..
-        output_template
+local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü inceleyip şu formata göre raporla.\n" ..
+    "CRITICAL INSTRUCTION: Strictly use ONLY the provided template format below. " ..
+    "Preserve the exact template headers. Do NOT add any extra or external headers " ..
+    "(such as 'FINDINGS', 'IMPRESSION', 'SUMMARY' etc.) and do not write any introductory text. " ..
+    "Fill only the fields inside the template:\n\n" ..
+    output_template
 
     body.messages = {}
     if has_system_prompt then
