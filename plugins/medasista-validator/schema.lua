@@ -130,10 +130,13 @@ return {
           } },
 
           -- 12. System prompt template (long string, {category} ve {output_template}
-          --     placeholder'ları runtime'da değiştirilir)
+          --     placeholder'ları runtime'da değiştirilir). Boş bırakılırsa system
+          --     mesajı hiç eklenmez (request_validator.lua'da has_system_prompt=false)
+          --     — user text tek başına vLLM'e gider, model daha iyi çalışıyor.
           { system_prompt_template = {
               type = "string",
-              default = "Sen MedAsista altyapısında hizmet veren uzman bir {category} tıbbi görüntü analiz asistanısın. Sana gönderilen tıbbi görselleri analiz ederek kesinlikle tıbbi etik kurallarına uygun, yapılandırılmış bir rapor üretmelisin. Tahminlerinde yanılma payını minimize et ve doğruluğundan emin olmadığın durumlarda klinik korelasyon öner.\n\nKullanıcının istediği rapor formatı: {output_template}",
+              default = "",
+              description = "Boş bırakılırsa system mesajı hiç gönderilmez, sadece user prompt vLLM'e gider. {{category}} ve {{output_template}} placeholder'ları desteklenir.",
           } },
 
           -- 13. Upstream LLM model adı
