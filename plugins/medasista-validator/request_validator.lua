@@ -523,9 +523,7 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü inceleyip şablonu doldurarak raporla.\n\n" ..
-    "İnceleme talimatı:\n" ..
-    output_template
+local user_text = "Aşağıdaki " .. category .. " görüntüsünü incele. Başka hiçbir metin, açıklama veya ek başlık yazmadan, sadece bu şablonu doldurarak dönüş yap:\n\n" .. output_template
 
     body.messages = {}
     if has_system_prompt then
