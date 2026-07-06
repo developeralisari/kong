@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import logging
 import asyncio
 import signal
@@ -302,6 +303,10 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
             choices = raw_result.get("choices", [])
             if choices and isinstance(choices, list) and choices[0].get("message"):
                 content = choices[0]["message"].get("content", "")
+
+            # MedGemma thinking token'larını temizle (<unused94>thought...<unused95>)
+            if "<unused94>" in content:
+                content = re.sub(r"<unused94>.*?<unused95>", "", content, flags=re.DOTALL).strip()
 
             vllm_output_tokens = raw_result.get("usage", {}).get("completion_tokens", 0)
             total_tokens = billable_input_tokens + vllm_output_tokens

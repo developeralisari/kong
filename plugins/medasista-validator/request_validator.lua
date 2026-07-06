@@ -539,12 +539,12 @@ function M.validate(plugin_conf)
         role = "user",
         content = {
             {
-                type = "image_url",
-                image_url = { url = image_url },
-            },
-            {
                 type = "text",
                 text = user_text,
+            },
+            {
+                type = "image_url",
+                image_url = { url = image_url },
             },
         },
     }
@@ -557,8 +557,6 @@ function M.validate(plugin_conf)
 
     body.model = cfg.model_name
     body.stream = cfg.stream_enabled
-    body.temperature = 0.0
-    body.repetition_penalty = 1.15
 
     -- JSON encode
     local ok, encoded_or_err = pcall(cjson.encode, body)
