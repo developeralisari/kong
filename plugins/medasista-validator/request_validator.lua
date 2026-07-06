@@ -523,13 +523,15 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü dikkatlice incele ve rapor şablonunu doldur.\n\n" ..
-    "DOLDURMA KURALI:\n" ..
-    "- İki nokta (: ) işaretinden önceki uzun başlık metinlerine kesinlikle dokunma, aynen koru.\n" ..
-    "- Sadece köşeli parantezlerin [...] içini kendi klinik yorumunla doldur ve parantezleri kaldır.\n" ..
-    "- Şablonun son satırını doldurduktan sonra raporu kesin olarak bitir.\n\n" ..
-    "Çıktı Format Örneği:\n" ..
-    "Şablondaki Sabit Başlık Metni: Görüntü analizinden elde edilen klinik bulgu ve yorum buraya yazılır.\n\n" ..
+local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü dikkatlice incele ve raporu doğrudan aşağıdaki şablonu doldurarak oluştur.\n\n" ..
+    "KESİN BİÇİMLENDİRME KURALLARI:\n" ..
+    "1. Çıktıya kesinlikle '**Değerlendirme:**', yıldız (*), liste işaretleri veya hiçbir markdown formatı EKLEME. Düz metin olarak yaz.\n" ..
+    "2. Şablonun en başındaki ana başlığı ve iki nokta (: ) işaretine kadar olan satır başlarını kesinlikle değiştirme, aynen koru.\n" ..
+    "3. Sadece köşeli parantezlerin [...] içini klinik yorumunla doldur ve parantezleri tamamen kaldır. Rapora ham şablonu veya boş parantezleri ekleme.\n\n" ..
+    "ÖRNEK ÇIKTI FORMATI:\n" ..
+    "SERVİKAL MRG VERTEBRALARA (SERVİKAL) YÖNELİK MANYETİK REZONANS GÖRÜNTÜLEME İNCELEMESİ DEĞERLENDİRME RAPORU\n\n" ..
+    "Kranioservikal bileşke: Kranioservikal bileşke normal görünmektedir.\n" ..
+    "Servikal lordoz ve aks: Servikal lordoz normal görünmektedir.\n\n" ..
     "ŞABLON:\n" .. output_template
 
     body.messages = {}
