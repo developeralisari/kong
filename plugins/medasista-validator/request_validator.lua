@@ -523,12 +523,11 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-local user_text = "Please carefully evaluate the " .. category .. " image and fill out the report using the exact categories provided in the template below.\n" ..
-    "CRITICAL FORMATTING RULES:\n" ..
-    "1. Treat the text inside each bracket [ ] as a permanent line header. Do NOT delete, change, or replace this header text.\n" ..
-    "2. Format every single line exactly as: 'Header Text: Your Clinical Finding' (Remove the square brackets completely from the final output).\n" ..
-    "3. Do NOT add any extra or external headers like 'FINDINGS', 'IMPRESSION', or 'SUMMARY'. Output only the filled template lines.\n\n" ..
-    "TEMPLATE:\n" .. output_template
+local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü inceleyip şablondaki her bir başlığın yanına klinik bulgularını yaz.\n" ..
+    "DOLDURMA KURALI: Şablondaki başlık yapısını bozma. Son satırdaki başlığı da doldurduktan sonra raporu kesin olarak bitir, altına hiçbir ek metin veya yeni başlık ekleme.\n\n" ..
+    "Örnek Format:\n" ..
+    "[Örnek Başlık]: Klinik durum normaldir.\n\n" ..
+    "ŞABLON:\n" .. output_template
 
     body.messages = {}
     if has_system_prompt then
