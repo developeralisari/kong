@@ -264,6 +264,17 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
 
         payload = sanitize_image_payload(payload)
 
+        # Content sıralaması: text parçaları image'dan önce gelmeli
+        # MedGemma text-first sıralamada daha iyi sonuç veriyor
+        if isinstance(payload.get("messages"), list):
+            for msg in payload["messages"]:
+                content = msg.get("content")
+                if isinstance(content, list):
+                    text_parts = [p for p in content if p.get("type") == "text"]
+                    image_parts = [p for p in content if p.get("type") == "image_url"]
+                    other_parts = [p for p in content if p.get("type") not in ("text", "image_url")]
+                    msg["content"] = text_parts + image_parts + other_parts
+
         # Operatör-kontrollü model ve sampling — müşteri input'unu override eder
         payload["model"] = VLLM_MODEL
         payload["temperature"] = VLLM_TEMPERATURE
