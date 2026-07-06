@@ -82,6 +82,17 @@ CONCURRENCY_LIMIT = int(os.environ.get('CONCURRENCY_LIMIT', '128'))
 VLLM_TIMEOUT = int(os.environ.get('VLLM_TIMEOUT', '120'))
 
 # ═══════════════════════════════════════════════════════════════════════════
+# vLLM operatör-kontrollü ayarlar — müşteri input'unu override eder (Dokploy env)
+# ═══════════════════════════════════════════════════════════════════════════
+VLLM_MODEL = os.environ.get('VLLM_MODEL', 'google/medgemma-1.5-4b-it')
+VLLM_TEMPERATURE = float(os.environ.get('VLLM_TEMPERATURE', '0.1'))
+VLLM_TOP_P = float(os.environ.get('VLLM_TOP_P', '0.95'))
+VLLM_TOP_K = int(os.environ.get('VLLM_TOP_K', '40'))
+VLLM_MIN_P = float(os.environ.get('VLLM_MIN_P', '0.05'))
+VLLM_REPETITION_PENALTY = float(os.environ.get('VLLM_REPETITION_PENALTY', '1.1'))
+VLLM_MAX_TOKENS = int(os.environ.get('VLLM_MAX_TOKENS', '2048'))
+
+# ═══════════════════════════════════════════════════════════════════════════
 # DB connection pool
 # ═══════════════════════════════════════════════════════════════════════════
 db_pool = None
@@ -243,9 +254,25 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
     try:
         payload.pop("medasista_metadata", None)
 
+        # Müşterinin gönderdiği system mesajlarını at — model tek user prompt'la daha iyi çalışıyor
+        # (doğrudan vLLM testinde system prompt olmadan mükemmel çıktı alındı)
+        if isinstance(payload.get("messages"), list):
+            payload["messages"] = [m for m in payload["messages"] if m.get("role") != "system"]
+
+        # Faturalanacak input token sayısı — system prompt hariç, sadece vLLM'e gidecek içerik
         billable_input_tokens = calculate_billable_input_tokens(payload)
 
         payload = sanitize_image_payload(payload)
+
+        # Operatör-kontrollü model ve sampling — müşteri input'unu override eder
+        payload["model"] = VLLM_MODEL
+        payload["temperature"] = VLLM_TEMPERATURE
+        payload["top_p"] = VLLM_TOP_P
+        payload["top_k"] = VLLM_TOP_K
+        payload["min_p"] = VLLM_MIN_P
+        payload["repetition_penalty"] = VLLM_REPETITION_PENALTY
+        payload["max_tokens"] = VLLM_MAX_TOKENS
+        payload["stream"] = False
 
         response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
 
