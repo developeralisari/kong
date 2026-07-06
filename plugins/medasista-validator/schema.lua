@@ -141,6 +141,18 @@ return {
               description = "Boş bırakılırsa system mesajı hiç gönderilmez, sadece user prompt vLLM'e gider. {{category}} ve {{output_template}} placeholder'ları desteklenir.",
           } },
 
+          -- 12b. User prompt template (user mesajının text kısmı, image ile birlikte gider).
+          --     {category} ve {output_template} placeholder'ları runtime'da değiştirilir.
+          --     Default olarak Ali'nin örnek şablonu set ediliyor; Admin UI'dan
+          --     dinamik olarak güncellenebilir. Non-empty default Kong 3.9 metaschema'nın
+          --     "length must be at least 1" kuralını geçer (system_prompt_template'in
+          --     aksine — onda default veremiyoruz çünkü boş bırakılabilir olmalı).
+          { user_prompt_template = {
+              type = "string",
+              default = "Aşağıdaki {category} görüntüsünü incele. Başka hiçbir metin, açıklama veya ek başlık yazmadan, sadece bu şablonu doldurarak dönüş yap:\n\n{output_template}",
+              description = "User mesajının metin kısmı (image ile birlikte gönderilir). {category} ve {output_template} placeholder'ları desteklenir.",
+          } },
+
           -- 13. Upstream LLM model adı
           { model_name = {
               type = "string",

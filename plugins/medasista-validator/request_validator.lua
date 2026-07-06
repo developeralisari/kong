@@ -56,6 +56,7 @@ local DEFAULT_CONFIG = {
     max_metadata_depth = 3,
     max_metadata_fields = 10,
     system_prompt_template = "",
+    user_prompt_template = "Aşağıdaki {category} görüntüsünü incele. Başka hiçbir metin, açıklama veya ek başlık yazmadan, sadece bu şablonu doldurarak dönüş yap:\n\n{output_template}",
     model_name = "google/medgemma-1.5-4b-it",
     stream_enabled = false,
     jailbreak_patterns = {},
@@ -523,7 +524,17 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-local user_text = "Aşağıdaki " .. category .. " görüntüsünü incele. Başka hiçbir metin, açıklama veya ek başlık yazmadan, sadece bu şablonu doldurarak dönüş yap:\n\n" .. output_template
+-- User prompt template: {category} ve {output_template} placeholder'ları
+    -- config'den gelen template ile değiştirilir (system_prompt_template ile aynı pattern).
+    -- Default dolu gelir (schema'da non-empty default); admin isterse Admin UI'dan
+    -- farklı bir şablon set edebilir. Boş bırakılırsa image metin olmadan gider
+    -- (edge case — model'e sadece görsel gider, instruction yok).
+    local user_prompt = cfg.user_prompt_template or ""
+    if user_prompt ~= "" then
+        user_prompt = string.gsub(user_prompt, "{category}", gsub_escape(category))
+        user_prompt = string.gsub(user_prompt, "{output_template}", gsub_escape(output_template))
+    end
+    local user_text = user_prompt
 
     body.messages = {}
     if has_system_prompt then
