@@ -524,7 +524,7 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
--- User prompt template: {category} ve {output_template} placeholder'ları
+    -- User prompt template: {category} ve {output_template} placeholder'ları
     -- config'den gelen template ile değiştirilir (system_prompt_template ile aynı pattern).
     -- Default dolu gelir (schema'da non-empty default); admin isterse Admin UI'dan
     -- farklı bir şablon set edebilir. Boş bırakılırsa image metin olmadan gider
