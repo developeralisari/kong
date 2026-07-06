@@ -103,3 +103,12 @@ JOBS_CONCURRENCY_LIMIT=128
 VLLM_TIMEOUT=600
 JOB_REQUEST_PATH=/2d-image-api-request
 JOB_POLLING_PATH=/2d-image-api-response/jobs/{job_id}
+JOBS_VLLM_MODEL=google/medgemma-1.5-4b-it
+
+# ── vLLM sampling defaults (worker bu değerleri müşteri input'una override eder) ──
+JOBS_VLLM_TEMPERATURE=0.1
+JOBS_VLLM_TOP_P=0.95
+JOBS_VLLM_TOP_K=40
+JOBS_VLLM_MIN_P=0.05
+JOBS_VLLM_REPETITION_PENALTY=1.1
+JOBS_VLLM_MAX_TOKENS=2048
