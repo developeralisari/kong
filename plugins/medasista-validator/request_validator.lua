@@ -524,7 +524,8 @@ function M.validate(plugin_conf)
     end
 
     local user_text = "Lütfen aşağıdaki " .. category ..
-        " görüntüsünü inceleyip şu formata göre raporla:\n\n" ..
+        " görüntüsünü inceleyip şu formata göre raporla.\n" ..
+        "Output ONLY the template fields below, no extra headers:\n\n" ..
         output_template
 
     body.messages = {}
