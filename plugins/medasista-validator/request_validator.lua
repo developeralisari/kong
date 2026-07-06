@@ -523,9 +523,8 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-    local user_text = "Lütfen iletilen " .. category ..
-        " görselini analiz et ve aşağıdaki boş rapor şablonunu bulgularına göre doldur." ..
-        " Başlıkları değiştirmeden sadece iki nokta üst üste (:) işaretinden sonraki kısımlara teşhislerini yaz.\n\n" ..
+    local user_text = "Lütfen aşağıdaki " .. category ..
+        " görüntüsünü inceleyip şu formata göre raporla:\n\n" ..
         output_template
 
     body.messages = {}
