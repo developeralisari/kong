@@ -281,12 +281,14 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
         payload["max_tokens"] = VLLM_MAX_TOKENS
         payload.pop("stream", None)
 
+        user_msg = next((m for m in payload.get("messages", []) if m.get("role") == "user"), None)
+        content_order = [p.get("type") for p in user_msg["content"]] if user_msg and isinstance(user_msg.get("content"), list) else "N/A"
         logger.info(
             f"[job={job_id}] vLLM payload: model={payload['model']}, "
             f"temp={payload['temperature']}, top_p={payload['top_p']}, "
             f"top_k={payload['top_k']}, min_p={payload['min_p']}, "
             f"rep_penalty={payload['repetition_penalty']}, max_tokens={payload['max_tokens']}, "
-            f"content_order={[p.get('type') for p in payload['messages'][0]['content']] if payload.get('messages') else 'N/A'}"
+            f"content_order={content_order}"
         )
 
         response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
