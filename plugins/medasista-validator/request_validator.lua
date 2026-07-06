@@ -513,31 +513,38 @@ function M.validate(plugin_conf)
 
     -- System prompt template: {category} ve {output_template} placeholder'ları
     -- config'den gelen template ile değiştirilir.
-    local prompt = cfg.system_prompt_template
-    prompt = string.gsub(prompt, "{category}", gsub_escape(category))
-    prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
+    -- Boş/nil ise system mesajı hiç eklenmez (test sonucumuz: user_text tek başına
+    -- en iyi generic kaçışı azaltıyor; system prompt eklendiğinde model
+    -- "<unused94>thought" düşünme moduna girip yapı kuruyor ama içerik atlayabiliyor).
+    local prompt = cfg.system_prompt_template or ""
+    local has_system_prompt = prompt ~= ""
+    if has_system_prompt then
+        prompt = string.gsub(prompt, "{category}", gsub_escape(category))
+        prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
+    end
 
     local user_text = "Lütfen iletilen " .. category ..
         " görselini analiz et ve aşağıdaki boş rapor şablonunu bulgularına göre doldur." ..
         " Başlıkları değiştirmeden sadece iki nokta üst üste (:) işaretinden sonraki kısımlara teşhislerini yaz.\n\n" ..
         output_template
 
-    body.messages = {
-        {
+    body.messages = {}
+    if has_system_prompt then
+        body.messages[#body.messages + 1] = {
             role = "system",
             content = prompt,
-        },
-        {
-            role = "user",
-            content = {
-                {
-                    type = "image_url",
-                    image_url = { url = image_url },
-                },
-                {
-                    type = "text",
-                    text = user_text,
-                },
+        }
+    end
+    body.messages[#body.messages + 1] = {
+        role = "user",
+        content = {
+            {
+                type = "image_url",
+                image_url = { url = image_url },
+            },
+            {
+                type = "text",
+                text = user_text,
             },
         },
     }
