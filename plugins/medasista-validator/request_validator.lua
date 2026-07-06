@@ -523,11 +523,11 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü inceleyip şu formata göre raporla.\n" ..
-    "CRITICAL INSTRUCTION: Strictly use ONLY the provided template format below. " ..
-    "Preserve the exact template headers. Do NOT add any extra or external headers " ..
-    "(such as 'FINDINGS', 'IMPRESSION', 'SUMMARY' etc.) and do not write any introductory text. " ..
-    "Fill only the fields inside the template:\n\n" ..
+local user_text = "Please carefully evaluate the following " .. category .. " image and report your findings by FILLING IN the provided template below.\n" ..
+    "CRITICAL INSTRUCTIONS:\n" ..
+    "1. You must REPLACE the bracketed placeholders [ ] with your actual clinical findings based on the image analysis. Do not output an empty template.\n" ..
+    "2. Keep the exact template structure and headers.\n" ..
+    "3. Do NOT add any external or extra headers such as 'FINDINGS', 'IMPRESSION', or 'SUMMARY'. Output only the completed template fields.\n\n" ..
     output_template
 
     body.messages = {}
