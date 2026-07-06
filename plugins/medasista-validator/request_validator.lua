@@ -523,10 +523,13 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü inceleyip şablondaki her bir başlığın yanına klinik bulgularını yaz.\n" ..
-    "DOLDURMA KURALI: Şablondaki başlık yapısını bozma. Son satırdaki başlığı da doldurduktan sonra raporu kesin olarak bitir, altına hiçbir ek metin veya yeni başlık ekleme.\n\n" ..
-    "Örnek Format:\n" ..
-    "[Örnek Başlık]: Klinik durum normaldir.\n\n" ..
+local user_text = "Lütfen aşağıdaki " .. category .. " görüntüsünü dikkatlice incele ve rapor şablonunu doldur.\n\n" ..
+    "DOLDURMA KURALI:\n" ..
+    "- İki nokta (: ) işaretinden önceki uzun başlık metinlerine kesinlikle dokunma, aynen koru.\n" ..
+    "- Sadece köşeli parantezlerin [...] içini kendi klinik yorumunla doldur ve parantezleri kaldır.\n" ..
+    "- Şablonun son satırını doldurduktan sonra raporu kesin olarak bitir.\n\n" ..
+    "Çıktı Format Örneği:\n" ..
+    "Şablondaki Sabit Başlık Metni: Görüntü analizinden elde edilen klinik bulgu ve yorum buraya yazılır.\n\n" ..
     "ŞABLON:\n" .. output_template
 
     body.messages = {}
