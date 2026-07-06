@@ -1,36 +1,5 @@
--- ==========================================================================
--- MedAsista AI Gateway — Request Validator (MedGemma 1.5 Hardened)
--- Kong Plugin (access phase).
--- 2D tıbbi görsel işleme endpoint'leri için kapsamlı validasyon.
---
--- Kullanım (Kong UI → Plugin → access phase):
---   require("kong.plugins.medasista-validator.request_validator").validate(conf)
---
--- conf: Kong plugin config (schema.lua'dan). Tüm alanlar schema default'larına
---       sahip olduğu için her zaman dolu gelir. Yine de DEFAULT_CONFIG fallback
---       olarak tutulur (unit test / standalone kullanım için).
---
--- Spesifikasyon:
---   - Base64 JPG/PNG, max 896x896, max 10MB (varsayılan, hepsi config'den)
---   - Zorunlu: category (whitelist), image
---   - Opsiyonel: output_template, metadata
---
--- Güvenlik Modülleri:
---   1. Medical Safety Module (tıbbi tavsiye/teşhis/reçete - TR+EN)
---   2. System Prompt Protection (prompt extraction)
---   3. Output Sanitization (XSS/HTML/JS/Template injection)
---   4. PHI/PII Detection (TC, tel, email, KVKK/GDPR)
---   5. Multi-Language Injection (TR+EN+karışık)
---   6. Encoding Detection (Base64/ROT13/Unicode homoglyph)
---   7. Category-Image Consistency (basit heuristik)
---   8. Request Structure Limits (depth, field count)
--- ==========================================================================
-
 local cjson = require("cjson.safe")
 
--- Lua string.gsub replacement string'inde % özel karakter (capture index gibi yorumlanır).
--- Kullanıcı kontrollü string'i (output_template, category) gsub'a vermeden önce
--- % karakterlerini %% olarak escape etmek gerekir; aksi halde "invalid capture index" hatası fırlatır.
 local function gsub_escape(s)
     if s == nil then return "" end
     return (s:gsub("%%", "%%%%"))
@@ -38,11 +7,6 @@ end
 
 local M = {}
 
--- ==========================================================================
--- DEFAULT CONFIG — Schema'daki default'larla birebir aynı olmalı.
--- conf verilmezse veya bazı alanlar eksikse fallback olarak kullanılır.
--- ==========================================================================
--- Standalone test fallback — Kong her zaman schema default'larını conf'a enjekte eder.
 local DEFAULT_CONFIG = {
     allowed_methods = { "POST", "PUT" },
     max_file_size_bytes = 10 * 1024 * 1024,
@@ -56,7 +20,7 @@ local DEFAULT_CONFIG = {
     max_metadata_depth = 3,
     max_metadata_fields = 10,
     system_prompt_template = "",
-    user_prompt_template = "Aşağıdaki {category} görüntüsünü incele. Başka hiçbir metin, açıklama veya ek başlık yazmadan, sadece bu şablonu doldurarak dönüş yap:\n\n{output_template}",
+    user_prompt_template = "Complete this Turkish radiology template using the {category} image. Fill ONLY the [...] fields. Keep all headings exactly as written:\n\n{output_template}",
     model_name = "google/medgemma-1.5-4b-it",
     stream_enabled = false,
     jailbreak_patterns = {},
@@ -69,11 +33,9 @@ local DEFAULT_CONFIG = {
     phi_patterns = {},
 }
 
--- Güvenlik bütünlüğü — config'e taşınmaz, sabit kalır
 local MAGIC_JPG = string.char(0xFF, 0xD8, 0xFF)
 local MAGIC_PNG = string.char(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 
--- Encoding detection için sabit keyword'ler (saldırı yüzeyi tanımı)
 local BASE64_INJECTION_KEYWORDS = { "ignore", "instruction", "system", "prompt", "bypass safety", "bypass your" }
 local ROT13_KEYWORDS = {
     "vtaber", "vtaber nyy", "vafgehpgvba", "flfgrz cebzcg",
@@ -83,17 +45,12 @@ local BASE64_DETECTION_REGEX = "[A-Za-z0-9+/=]{40,}"
 local BASE64_MIN_INSPECT_LEN = 20
 local ZERO_WIDTH_CHARS_REGEX = "[\\x{200B}-\\x{200F}\\x{202A}-\\x{202E}\\x{FEFF}]"
 
--- ==========================================================================
--- HELPERS
--- ==========================================================================
-
 local function error_response(status, error_type, message, details)
     local body = { e = error_type, m = message }
     if details then body.d = details end
     return kong.response.exit(status, cjson.encode(body))
 end
 
--- Array'de üye kontrolü (allowed_methods, allowed_categories için)
 local function array_contains(arr, value)
     if type(arr) ~= "table" then return false end
     for _, v in ipairs(arr) do
@@ -102,7 +59,6 @@ local function array_contains(arr, value)
     return false
 end
 
--- Array'i sort edilmiş string listesine çevir (error mesajlarında)
 local function array_to_sorted_string(arr)
     local sorted = {}
     for _, v in ipairs(arr or {}) do sorted[#sorted + 1] = v end
@@ -110,7 +66,6 @@ local function array_to_sorted_string(arr)
     return table.concat(sorted, ", ")
 end
 
--- Base64 decode (data URI prefix'ini destekler)
 local function decode_base64(b64_string)
     local data = b64_string
     if data:sub(1, 5) == "data:" then
@@ -122,7 +77,6 @@ local function decode_base64(b64_string)
     return ngx.decode_base64(data)
 end
 
--- Görsel format algılama (magic bytes)
 local function detect_image_format(raw_bytes)
     if not raw_bytes or #raw_bytes < 8 then
         return nil
@@ -136,7 +90,6 @@ local function detect_image_format(raw_bytes)
     return nil
 end
 
--- Görsel çözünürlük okuma
 local function get_image_dimensions(raw_bytes, format)
     if format == "jpg" then
         local i = 3
@@ -174,7 +127,6 @@ local function get_image_dimensions(raw_bytes, format)
     return nil, nil
 end
 
--- Unicode homoglyph normalization: Cyrillic/full-width → ASCII
 local HOMOGLYPHS = {
     ["\xD0\xB0"] = "a", ["\xD1\x81"] = "c", ["\xD0\xB5"] = "e",
     ["\xD0\xBE"] = "o", ["\xD1\x80"] = "p", ["\xD1\x85"] = "x",
@@ -185,15 +137,12 @@ local HOMOGLYPHS = {
 
 local function normalize_text(text)
     if not text then return "" end
-    -- Step 1: lowercase via ngx.re (unicode-aware)
     local lower = ngx.re.gsub(text, ".", function(m)
         return string.lower(m[0])
     end, "u") or string.lower(text)
-    -- Step 2: replace known Cyrillic homoglyphs with ASCII equivalents
     for homoglyph, ascii in pairs(HOMOGLYPHS) do
         lower = lower:gsub(homoglyph, ascii)
     end
-    -- Step 3: strip full-width ASCII (U+FF01-FF5E → 0x21-0x7E)
     lower = ngx.re.gsub(lower, "[\\x{FF01}-\\x{FF5E}]", function(m)
         local b1, b2, b3 = string.byte(m[0], 1, 3)
         local codepoint = ((b1 - 0xE0) * 4096) + ((b2 - 0x80) * 64) + (b3 - 0x80)
@@ -203,12 +152,10 @@ local function normalize_text(text)
         end
         return m[0]
     end, "u") or lower
-    -- Step 4: strip zero-width characters
     lower = ngx.re.gsub(lower, "[\\x{200B}-\\x{200F}\\x{202A}-\\x{202E}\\x{FEFF}\\x{00AD}]", "", "u") or lower
     return lower
 end
 
--- Multi-pattern detection (plain text, unicode-normalized, case-insensitive)
 local function detect_patterns(text, pattern_list)
     if not text or type(text) ~= "string" then return nil end
     if type(pattern_list) ~= "table" then return nil end
@@ -223,7 +170,6 @@ local function detect_patterns(text, pattern_list)
     return nil
 end
 
--- Multi-pattern detection (regex via ngx.re.find)
 local function detect_regex_patterns(text, pattern_list)
     if not text or type(text) ~= "string" then return nil, nil end
     if type(pattern_list) ~= "table" then return nil, nil end
@@ -238,11 +184,8 @@ local function detect_regex_patterns(text, pattern_list)
     return nil, nil
 end
 
--- Encoding bypass detection (sabit kurallar)
 local function detect_encoding_bypass(text)
     if not text or type(text) ~= "string" then return nil end
-
-    -- Base64 encoded strings (uzun base64 blokları)
     if ngx.re.find(text, BASE64_DETECTION_REGEX, "jo") then
         for encoded in string.gmatch(text, "[A-Za-z0-9+/=]+") do
             if #encoded >= BASE64_MIN_INSPECT_LEN then
@@ -258,29 +201,22 @@ local function detect_encoding_bypass(text)
             end
         end
     end
-
-    -- Zero-width character detection
     if ngx.re.find(text, ZERO_WIDTH_CHARS_REGEX, "jo") then
         return "Zero-width characters detected"
     end
-
-    -- ROT13 keyword detection
     local lower = string.lower(text)
     for _, kw in ipairs(ROT13_KEYWORDS) do
         if string.find(lower, kw, 1, true) then
             return "ROT13 encoded injection: " .. kw
         end
     end
-
     return nil
 end
 
--- PHI/PII detection
 local function detect_phi(text, phi_patterns)
     return detect_regex_patterns(text, phi_patterns)
 end
 
--- Table depth hesaplama
 local function table_depth(t, max_depth, current_depth)
     current_depth = current_depth or 1
     if current_depth > max_depth then return current_depth end
@@ -295,7 +231,6 @@ local function table_depth(t, max_depth, current_depth)
     return max_found
 end
 
--- Table field count
 local function table_field_count(t)
     if type(t) ~= "table" then return 0 end
     local count = 0
@@ -303,36 +238,24 @@ local function table_field_count(t)
     return count
 end
 
--- ==========================================================================
--- CONFIG
--- ==========================================================================
-
--- Kong schema zaten tüm default'ları conf'a enjekte eder.
--- DEFAULT_CONFIG sadece standalone test/fallback için tutulur.
 local function get_config(conf)
     if type(conf) == "table" then return conf end
     return DEFAULT_CONFIG
 end
 
--- ==========================================================================
--- MAIN VALIDATION
--- ==========================================================================
 function M.validate(plugin_conf)
     local cfg = get_config(plugin_conf)
 
-    -- 1. HTTP method kontrolü
     local method = kong.request.get_method()
     if not array_contains(cfg.allowed_methods, method) then
-        return -- İzin verilmeyen methodlar için validasyon yok
+        return
     end
 
-    -- 2. Body kontrolü
     local body = kong.ctx.shared.parsed_body
     if not body or type(body) ~= "table" then
         return error_response(400, "ValidationError", "Request body required")
     end
 
-    -- 2a. Request structure limits
     local body_field_count = table_field_count(body)
     if body_field_count > cfg.max_body_fields then
         return error_response(400, "ValidationError",
@@ -340,7 +263,6 @@ function M.validate(plugin_conf)
             string.format("Max %d, got %d", cfg.max_body_fields, body_field_count))
     end
 
-    -- 3. Category validasyonu (ZORUNLU)
     if not body.category then
         return error_response(400, "ValidationError", "Missing: category")
     end
@@ -352,9 +274,7 @@ function M.validate(plugin_conf)
             "Invalid category",
             "Allowed: " .. array_to_sorted_string(cfg.allowed_categories))
     end
-    -- Category whitelist zaten koruyor (array_contains yukarıda). Ek pattern taraması gereksiz.
 
-    -- 4. Image validasyonu (ZORUNLU)
     if not body.image then
         return error_response(400, "ValidationError", "Missing: image")
     end
@@ -362,7 +282,6 @@ function M.validate(plugin_conf)
         return error_response(400, "ValidationError", "image must be base64 string")
     end
 
-    -- 4a. Base64 boyut kontrolü (max_file_size_bytes'tan otomatik hesapla)
     local max_base64_chars = math.ceil(cfg.max_file_size_bytes * 4 / 3) + 200
     if #body.image > max_base64_chars then
         return error_response(413, "ValidationError",
@@ -370,27 +289,22 @@ function M.validate(plugin_conf)
             string.format("Max %dMB", cfg.max_file_size_bytes / 1024 / 1024))
     end
 
-
-    -- 4b. Base64 decode
     local raw_bytes = decode_base64(body.image)
     if not raw_bytes then
         return error_response(400, "ValidationError", "Invalid base64 encoding")
     end
 
-    -- 4c. Decode sonrası gerçek boyut kontrolü
     if #raw_bytes > cfg.max_file_size_bytes then
         return error_response(413, "ValidationError",
             "Decoded image exceeds size limit")
     end
 
-    -- 4d. Format kontrolü (yalnızca JPG ve PNG)
     local format = detect_image_format(raw_bytes)
     if not format then
         return error_response(415, "ValidationError",
             "Unsupported image format", "Only JPG and PNG are accepted")
     end
 
-    -- 4e. Çözünürlük kontrolü
     local width, height = get_image_dimensions(raw_bytes, format)
     if width and height then
         if width > cfg.max_image_width or height > cfg.max_image_height then
@@ -403,7 +317,6 @@ function M.validate(plugin_conf)
             return error_response(400, "ValidationError", "Invalid image dimensions")
         end
 
-        -- 4f. Category-Image consistency
         local hints = cfg.category_size_hints and cfg.category_size_hints[body.category]
         if hints then
             if width < hints.min_w or height < hints.min_h then
@@ -415,7 +328,6 @@ function M.validate(plugin_conf)
         end
     end
 
-    -- 5. output_template validasyonu (OPSİYONEL)
     if body.output_template ~= nil then
         if type(body.output_template) ~= "string" then
             return error_response(400, "ValidationError",
@@ -433,7 +345,6 @@ function M.validate(plugin_conf)
                 string.format("Min %d chars", cfg.template_min_length))
         end
 
-        -- 6a-6g: Multi-layer output_template kontrolü
         local tpl_match = detect_patterns(body.output_template, cfg.jailbreak_patterns)
         if tpl_match then
             return error_response(400, "PromptInjection", "Invalid template", tpl_match)
@@ -476,7 +387,6 @@ function M.validate(plugin_conf)
         end
     end
 
-    -- 6. metadata validasyonu (OPSİYONEL)
     if body.metadata ~= nil then
         if type(body.metadata) ~= "table" then
             return error_response(400, "ValidationError", "metadata must be object")
@@ -495,28 +405,17 @@ function M.validate(plugin_conf)
                 "metadata has too many fields",
                 string.format("Max %d, got %d", cfg.max_metadata_fields, field_count))
         end
-
-        -- Metadata prompt'a enjekte edilmiyor, sadece structure/size kontrolü yeterli.
     end
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- Tüm validasyonlar başarılı, upstream'e gönderilecek body'yi hazırla
-    -- ═══════════════════════════════════════════════════════════════════
     local category = body.category or "genel"
     local output_template = body.output_template or ""
-    
+
     local image_url = body.image
-    -- Ensure the image has a data URI prefix, otherwise vLLM URL validators might hang (ReDoS) or try to download it
     if image_url and string.sub(image_url, 1, 5) ~= "data:" then
         local ext = (format == "png") and "png" or "jpeg"
         image_url = "data:image/" .. ext .. ";base64," .. image_url
     end
 
-    -- System prompt template: {category} ve {output_template} placeholder'ları
-    -- config'den gelen template ile değiştirilir.
-    -- Boş/nil ise system mesajı hiç eklenmez (test sonucumuz: user_text tek başına
-    -- en iyi generic kaçışı azaltıyor; system prompt eklendiğinde model
-    -- "<unused94>thought" düşünme moduna girip yapı kuruyor ama içerik atlayabiliyor).
     local prompt = cfg.system_prompt_template or ""
     local has_system_prompt = prompt ~= ""
     if has_system_prompt then
@@ -524,11 +423,6 @@ function M.validate(plugin_conf)
         prompt = string.gsub(prompt, "{output_template}", gsub_escape(output_template))
     end
 
-    -- User prompt template: {category} ve {output_template} placeholder'ları
-    -- config'den gelen template ile değiştirilir (system_prompt_template ile aynı pattern).
-    -- Default dolu gelir (schema'da non-empty default); admin isterse Admin UI'dan
-    -- farklı bir şablon set edebilir. Boş bırakılırsa image metin olmadan gider
-    -- (edge case — model'e sadece görsel gider, instruction yok).
     local user_prompt = cfg.user_prompt_template or ""
     if user_prompt ~= "" then
         user_prompt = string.gsub(user_prompt, "{category}", gsub_escape(category))
@@ -547,17 +441,16 @@ function M.validate(plugin_conf)
         role = "user",
         content = {
             {
-                type = "text",
-                text = user_text,
-            },
-            {
                 type = "image_url",
                 image_url = { url = image_url },
+            },
+            {
+                type = "text",
+                text = user_text,
             },
         },
     }
 
-    -- Özel alanları temizle
     body.category = nil
     body.image = nil
     body.output_template = nil
@@ -566,16 +459,13 @@ function M.validate(plugin_conf)
     body.model = cfg.model_name
     body.stream = cfg.stream_enabled
 
-    -- JSON encode
     local ok, encoded_or_err = pcall(cjson.encode, body)
     if not ok then
         return error_response(500, "EncodeError", "Failed to encode body: " .. tostring(encoded_or_err))
     end
 
-    -- Kong'un parsed body cache'ini override et
     ngx.ctx.KONG_REQUEST_BODY = body
 
-    -- Upstream'e gönderilecek raw body'yi set et
     local ok_set, err_set = pcall(kong.service.request.set_raw_body, encoded_or_err)
     if not ok_set then
         local ok_req, err_req = pcall(kong.request.set_raw_body, encoded_or_err)
@@ -587,7 +477,4 @@ function M.validate(plugin_conf)
     end
 end
 
--- ==========================================================================
--- EXPORT
--- ==========================================================================
 return M
