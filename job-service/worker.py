@@ -255,12 +255,7 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
     try:
         payload.pop("medasista_metadata", None)
 
-        # Müşterinin gönderdiği system mesajlarını at — model tek user prompt'la daha iyi çalışıyor
-        # (doğrudan vLLM testinde system prompt olmadan mükemmel çıktı alındı)
-        if isinstance(payload.get("messages"), list):
-            payload["messages"] = [m for m in payload["messages"] if m.get("role") != "system"]
-
-        # Faturalanacak input token sayısı — system prompt hariç, sadece vLLM'e gidecek içerik
+        # Faturalanacak input token sayısı
         billable_input_tokens = calculate_billable_input_tokens(payload)
 
         payload = sanitize_image_payload(payload)
