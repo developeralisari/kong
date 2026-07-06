@@ -133,9 +133,11 @@ return {
           --     placeholder'ları runtime'da değiştirilir). Boş bırakılırsa system
           --     mesajı hiç eklenmez (request_validator.lua'da has_system_prompt=false)
           --     — user text tek başına vLLM'e gider, model daha iyi çalışıyor.
+          -- NOT: default verilmez — Kong 3.9 metaschema string default'unda
+          -- "length must be at least 1" kuralı var, boş string default olamaz.
+          -- nil/empty runtime'da Mesut'un 82408c0 commit'indeki `or ""` korumasıyla handle ediliyor.
           { system_prompt_template = {
               type = "string",
-              default = "",
               description = "Boş bırakılırsa system mesajı hiç gönderilmez, sadece user prompt vLLM'e gider. {{category}} ve {{output_template}} placeholder'ları desteklenir.",
           } },
 
