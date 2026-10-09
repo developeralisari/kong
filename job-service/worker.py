@@ -516,7 +516,7 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
                     "name": "bbox",
                     "strict": True,
                     "schema": {
-                        "type": "array", "maxItems": 1,
+                        "type": "array", "maxItems": 10,
                         "items": {
                             "type": "object",
                             "properties": {
