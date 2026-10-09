@@ -535,10 +535,10 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
         user_msg = next((m for m in req_payload.get("messages", []) if m.get("role") == "user"), None)
         content_order = [p.get("type") for p in user_msg["content"]] if user_msg and isinstance(user_msg.get("content"), list) else "N/A"
         logger.info(
-            f"[job={job_id}] vLLM payload: model={req_payload['model']}, "
-            f"temp={req_payload['temperature']}, top_p={req_payload['top_p']}, "
-            f"top_k={req_payload['top_k']}, min_p={req_payload['min_p']}, "
-            f"rep_penalty={req_payload['repetition_penalty']}, max_tokens={req_payload['max_tokens']}, "
+            f"[job={job_id}] vLLM payload: model={req_payload.get('model')}, "
+            f"temp={req_payload.get('temperature')}, top_p={req_payload.get('top_p')}, "
+            f"top_k={req_payload.get('top_k', '-')}, min_p={req_payload.get('min_p', '-')}, "
+            f"rep_penalty={req_payload.get('repetition_penalty')}, max_tokens={req_payload.get('max_tokens')}, "
             f"grounding={grounding_requested}, content_order={content_order}"
         )
 
