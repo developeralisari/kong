@@ -497,7 +497,7 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
         # greedy'de bile logit'leri değiştirdiği için grounding'de 1.0 + seed sabit.
         GROUNDING_PARAMS = {
             "temperature": 0.0, "seed": 0, "repetition_penalty": 1.0,
-            "max_tokens": 128, "top_p": 1.0,
+            "max_tokens": 512, "top_p": 1.0,
         }
         SAMPLING_PARAMS = {
             "temperature": VLLM_TEMPERATURE, "top_p": VLLM_TOP_P,
@@ -549,8 +549,11 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
 
             content = ""
             choices = raw_result.get("choices", [])
+            finish_reason = "unknown"
             if choices and isinstance(choices, list) and choices[0].get("message"):
                 content = choices[0]["message"].get("content", "")
+                finish_reason = choices[0].get("finish_reason", "unknown")
+                logger.info(f"[job={job_id}] finish_reason={finish_reason} output={raw_result.get('usage', {}).get('completion_tokens', '?')}")
 
             # MedGemma thinking token'larını temizle (<unused94>thought...<unused95>)
             if "<unused94>" in content:
