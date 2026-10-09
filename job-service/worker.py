@@ -231,6 +231,17 @@ def extract_grounding_boxes(content):
     """
     if not content:
         return []
+    # 0) Zorunlu şema çıktısı: tüm içerik düz JSON liste olabilir.
+    stripped = content.strip()
+    if stripped.startswith("["):
+        try:
+            items = json.loads(stripped)
+            if isinstance(items, list):
+                found = [x for x in items if isinstance(x, dict) and isinstance(x.get("box_2d"), list)]
+                if found:
+                    return found
+        except Exception:
+            pass
     candidates = []
     low = content.casefold()
     if "final answer" in low:
@@ -277,12 +288,149 @@ def validate_box_2d(box):
     if not (0 <= ymn < ymx <= 1000 and 0 <= xmn < xmx <= 1000):
         return "invalid", f"box out of range: {ymn},{xmn},{ymx},{xmx}"
     area = (ymx - ymn) * (xmx - xmn)
+    if area > 500000:
+        return "suspicious", (
+            f"box too large ({area / 10000:.0f}% of image) - "
+            "likely hallucinated center-box, requires visual verification"
+        )
     if area > 200000 and all(v % 50 == 0 for v in (ymn, xmn, ymx, xmx)):
         return "suspicious", (
-            f"box too large ({area / 10000:.0f}% of image, round numbers) - "
+            f"suspicious box ({area / 10000:.0f}% of image, round numbers) - "
             "likely hallucinated center-box, requires visual verification"
         )
     return "ok", "ok"
+
+
+def _otsu_threshold(vals):
+    # Klasik Otsu (256 bin). skimage bağımlılığı olmadan.
+    import numpy as np
+    v = np.asarray(vals, dtype=np.float32).ravel()
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return 0.0
+    lo, hi = float(v.min()), float(v.max())
+    if hi <= lo:
+        return lo
+    hist, edges = np.histogram(v, bins=256, range=(lo, hi))
+    hist = hist.astype(np.float64)
+    total = hist.sum()
+    if total == 0:
+        return lo
+    prob = hist / total
+    omega = np.cumsum(prob)
+    mu = np.cumsum(prob * np.arange(256))
+    mu_t = mu[-1]
+    denom = omega * (1.0 - omega)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sigma_b2 = np.where(denom > 0, (mu_t * omega - mu) ** 2 / denom, 0.0)
+    return float(edges[int(np.argmax(sigma_b2))])
+
+
+def _label_components(mask):
+    # 8-bağlantılı bileşen etiketleme (scipy.ndi.label yerine BFS).
+    # Dönüş: (labels int32, n).
+    import numpy as np
+    from collections import deque
+    m = np.ascontiguousarray(mask > 0)
+    H, W = m.shape
+    labels = np.zeros((H, W), dtype=np.int32)
+    n = 0
+    for y in range(H):
+        for x in range(W):
+            if not m[y, x] or labels[y, x]:
+                continue
+            n += 1
+            dq = deque([(y, x)])
+            labels[y, x] = n
+            while dq:
+                cy, cx = dq.popleft()
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        if not dy and not dx:
+                            continue
+                        ny, nx = cy + dy, cx + dx
+                        if 0 <= ny < H and 0 <= nx < W and m[ny, nx] and not labels[ny, nx]:
+                            labels[ny, nx] = n
+                            dq.append((ny, nx))
+    return labels, n
+
+
+def snap_box_to_bright(gray, box, grow=0.05):
+    """Model kutusunu parlak lezyon çekirdeğine yapıştır (numpy+PIL).
+    gray: uint8 2D; box [y0,x0,y1,x1] 0-1000. Dönüş: snapped 0-1000 veya None.
+    Varsayım: T1-CE parlak kontrast tutan lezyon. Hipointens/T2-FLAIR için uygun DEĞİL.
+    Eksik bağımlılıkta sessizce None döner (graceful degradation)."""
+    try:
+        import numpy as np
+        from PIL import Image, ImageFilter
+    except Exception:
+        return None
+    try:
+        H, W = gray.shape[:2]
+        y0, x0, y1, x1 = [int(v) for v in box]
+        gy, gx = (y1 - y0) * grow, (x1 - x0) * grow
+        Y0, Y1 = int(max(0, y0 - gy) * H / 1000), int(min(1000, y1 + gy) * H / 1000)
+        X0, X1 = int(max(0, x0 - gx) * W / 1000), int(min(1000, x1 + gx) * W / 1000)
+        if Y1 - Y0 < 8 or X1 - X0 < 8:
+            return None
+        roi = np.asarray(gray[Y0:Y1, X0:X1], dtype=np.uint8)
+        roi = np.asarray(Image.fromarray(roi).filter(ImageFilter.GaussianBlur(2)))
+        tissue = roi > 20  # padding/arka plan hariç
+        if int(tissue.sum()) < 500:
+            return None
+        t1 = _otsu_threshold(roi[tissue])
+        bright = roi[tissue]
+        bright = bright[bright > t1]
+        if bright.size < 500:
+            return None
+        t2 = _otsu_threshold(bright)  # en parlak sınıf eşiği
+        m = (roi > t2).astype(np.uint8) * 255
+        pm = Image.fromarray(m)
+        pm = pm.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MinFilter(3))
+        pm = pm.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MaxFilter(3))
+        m = np.asarray(pm) > 0
+        lab, cnt = _label_components(m)
+        if cnt == 0:
+            return None
+        sizes = np.array([(lab == k).sum() for k in range(1, cnt + 1)])
+        k = 1 + int(np.argmax(sizes))
+        # Alan kapısı: kafatası/sinüs gibi dev bileşenleri ele.
+        if sizes[k - 1] < 0.005 * m.size or sizes[k - 1] > 0.9 * m.size:
+            return None
+        ys, xs = np.where(lab == k)
+        return [round((Y0 + int(ys.min())) * 1000 / H), round((X0 + int(xs.min())) * 1000 / W),
+                round((Y0 + int(ys.max()) + 1) * 1000 / H), round((X0 + int(xs.max()) + 1) * 1000 / W)]
+    except Exception as e:
+        logger.warning(f"snap_box failed: {e}")
+        return None
+
+
+def first_image_gray(req_payload):
+    """Payload'daki ilk image_url data-URI'yi gri numpy dizisine çevirir (veya None)."""
+    try:
+        import base64 as _b64
+        import numpy as np
+        from PIL import Image
+        import io as _io
+    except Exception:
+        return None
+    try:
+        for msg in req_payload.get("messages", []) or []:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if part.get("type") != "image_url":
+                    continue
+                url = (part.get("image_url") or {}).get("url", "")
+                if "," in url:
+                    url = url.split(",", 1)[1]
+                raw = _b64.b64decode(url)
+                img = Image.open(_io.BytesIO(raw)).convert("L")
+                return np.asarray(img)
+    except Exception as e:
+        logger.warning(f"first_image_gray failed: {e}")
+    return None
 
 
 async def handle_failure(job_id, payload, consumer_name, retry_count, error_msg, producer):
@@ -344,20 +492,31 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
                     other_parts = [p for p in content if p.get("type") not in ("text", "image_url")]
                     msg["content"] = text_parts + image_parts + other_parts
 
-        # Operatör-kontrollü model ve sampling — müşteri input'unu override eder
+        # Operatör-kontrollü model ve sampling — müşteri input'unu override eder.
+        # Grounding ve normal UTM aynı parametreleri paylaşmaz: repetition_penalty
+        # greedy'de bile logit'leri değiştirdiği için grounding'de 1.0 + seed sabit.
+        GROUNDING_PARAMS = {
+            "temperature": 0.0, "seed": 0, "repetition_penalty": 1.0,
+            "max_tokens": 128, "top_p": 1.0,
+        }
+        SAMPLING_PARAMS = {
+            "temperature": VLLM_TEMPERATURE, "top_p": VLLM_TOP_P,
+            "top_k": VLLM_TOP_K, "min_p": VLLM_MIN_P,
+            "repetition_penalty": VLLM_REPETITION_PENALTY,
+            "max_tokens": VLLM_MAX_TOKENS,
+        }
         req_payload["model"] = GROUNDING_VLLM_MODEL if grounding_requested else VLLM_MODEL
-        req_payload["temperature"] = VLLM_TEMPERATURE
+        req_payload.update(GROUNDING_PARAMS if grounding_requested else SAMPLING_PARAMS)
         if grounding_requested:
-            # Grounding deterministik olmalı + çıktı şemaya zorlanır
-            # (vLLM guided JSON; destek prob'la doğrulandı).
-            req_payload["temperature"] = 0.0
+            # Çıktı şemaya zorlanır (vLLM guided JSON; destek prob'la doğrulandı).
+            # Tek kutu: maxItems 1.
             req_payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "bbox",
                     "strict": True,
                     "schema": {
-                        "type": "array",
+                        "type": "array", "maxItems": 1,
                         "items": {
                             "type": "object",
                             "properties": {
@@ -371,11 +530,6 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
                     },
                 },
             }
-        req_payload["top_p"] = VLLM_TOP_P
-        req_payload["top_k"] = VLLM_TOP_K
-        req_payload["min_p"] = VLLM_MIN_P
-        req_payload["repetition_penalty"] = VLLM_REPETITION_PENALTY
-        req_payload["max_tokens"] = VLLM_MAX_TOKENS
         req_payload.pop("stream", None)
 
         user_msg = next((m for m in req_payload.get("messages", []) if m.get("role") == "user"), None)
@@ -405,15 +559,29 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
             logger.info(f"[job={job_id}] raw_content_len={len(content)} raw_preview={content[:500]!r}")
 
             # Grounding çıktısı: "Final Answer:" JSON listesi → boxes[]
+            # + piksel snap (T1-CE parlak varsayımı; ham kutu da saklanır).
+            gray = first_image_gray(req_payload) if grounding_requested else None
             boxes = []
             for item in extract_grounding_boxes(content):
                 status, reason = validate_box_2d(item.get("box_2d"))
-                boxes.append({
+                entry = {
                     "label": str(item.get("label", "")),
                     "box_2d": item.get("box_2d"),
                     "status": status,
                     "reason": reason,
-                })
+                }
+                if gray is not None and status in ("ok", "suspicious") and isinstance(item.get("box_2d"), list):
+                    snapped = await asyncio.to_thread(snap_box_to_bright, gray, item.get("box_2d"))
+                    if snapped:
+                        entry["snapped_box_2d"] = snapped
+                        entry["snap"] = "ok"
+                    else:
+                        entry["snap"] = "none"
+                        if status == "ok":
+                            entry["status"] = "suspicious"
+                            entry["reason"] = (reason + "; snap: parlak bileşen bulunamadı" if reason else
+                                               "snap: parlak bileşen bulunamadı")
+                boxes.append(entry)
             if boxes and grounding_requested:
                 bad = [b for b in boxes if b["status"] == "invalid"]
                 if bad:
@@ -440,8 +608,15 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
             JOBS_COMPLETED.labels(consumer=consumer).inc()
             JOB_DURATION.labels(consumer=consumer).observe(time.time() - start_time)
         else:
-            error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
-            await handle_failure(job_id, payload, consumer, retry_count, error_msg, producer)
+            if 400 <= response.status_code < 500 and response.status_code != 429:
+                # 4xx (429 hariç) fail-fast: model yok/istek bozuk retry ile düzelmez.
+                msg = f"vLLM HTTP {response.status_code} non-retriable: {response.text[:500]}"
+                await safe_update_job_status(job_id, "FAILED", error=msg)
+                JOBS_FAILED.labels(consumer=consumer).inc()
+                logger.error(f"[job={job_id}] {msg}")
+            else:
+                error_msg = f"vLLM HTTP {response.status_code}: {response.text[:500]}"
+                await handle_failure(job_id, payload, consumer, retry_count, error_msg, producer)
     except httpx.TimeoutException:
         error_msg = f"vLLM timeout after {VLLM_TIMEOUT}s"
         await handle_failure(job_id, payload, consumer, retry_count, error_msg, producer)
