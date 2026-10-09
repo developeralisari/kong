@@ -257,10 +257,6 @@ def extract_grounding_boxes(content):
     for m in re.finditer(r"```json\s*(\[.*?\])\s*```", content, flags=re.DOTALL | re.IGNORECASE):
         if m.group(1) not in candidates:
             candidates.append(m.group(1))
-    # Son çare: fencesiz çıplak [...] (JSON-only prompt çıktısı).
-    bare = re.search(r"(\[\s*\{.*?box_2d.*?\}\s*\])", content, flags=re.DOTALL | re.IGNORECASE)
-    if bare:
-        candidates.append(bare.group(1))
     for raw in candidates:
         try:
             items = json.loads(raw)
@@ -270,6 +266,34 @@ def extract_grounding_boxes(content):
             found = [x for x in items if isinstance(x, dict) and isinstance(x.get("box_2d"), list)]
             if found:
                 return found
+    # Son çare: yarım kalmış dizideki TAMAMLANMIŞ kutuları tek tek topla
+    # (erken EOS; örn. 4 kutudan 3'ü tam). box_2d'si 4 tamsayılı objeler alınır.
+    objs = re.findall(
+        r"\{\s*\"box_2d\"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]"
+        r"[^}]*?\"label\"\s*:\s*\"([^\"]*)\"",
+        content, flags=re.IGNORECASE | re.DOTALL,
+    )
+    if objs:
+        return [{"box_2d": [int(a), int(b), int(c), int(d)], "label": lab}
+                for a, b, c, d, lab in objs]
+    objs = re.findall(
+        r"\{\s*\"label\"\s*:\s*\"([^\"]*)\"[^}]*?\"box_2d\"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]",
+        content, flags=re.IGNORECASE | re.DOTALL,
+    )
+    if objs:
+        return [{"box_2d": [int(a), int(b), int(c), int(d)], "label": lab}
+                for lab, a, b, c, d in objs]
+    # Son çare 2: fencesiz çıplak [...] (JSON-only prompt çıktısı).
+    bare = re.search(r"(\[\s*\{.*?box_2d.*?\}\s*\])", content, flags=re.DOTALL | re.IGNORECASE)
+    if bare:
+        try:
+            items = json.loads(bare.group(1))
+            if isinstance(items, list):
+                found = [x for x in items if isinstance(x, dict) and isinstance(x.get("box_2d"), list)]
+                if found:
+                    return found
+        except Exception:
+            pass
     return []
 
 
