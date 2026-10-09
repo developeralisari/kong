@@ -93,6 +93,10 @@ VLLM_MIN_P = float(os.environ.get('VLLM_MIN_P', '0.05'))
 VLLM_REPETITION_PENALTY = float(os.environ.get('VLLM_REPETITION_PENALTY', '1.1'))
 VLLM_MAX_TOKENS = int(os.environ.get('VLLM_MAX_TOKENS', '2048'))
 
+# Grounding istekleri için ayrı model (default: normal modelle aynı).
+# "grounding": true bayraklı job'lar bu modelle çalışır, diğer trafik etkilenmez.
+GROUNDING_VLLM_MODEL = os.environ.get('GROUNDING_VLLM_MODEL', VLLM_MODEL)
+
 # ═══════════════════════════════════════════════════════════════════════════
 # DB connection pool
 # ═══════════════════════════════════════════════════════════════════════════
@@ -217,6 +221,55 @@ def sanitize_image_payload(payload):
     return payload
 
 
+def extract_grounding_boxes(content):
+    """
+    Tek-görsel grounding cevabındaki "Final Answer:" sonrası JSON listesini parse eder.
+    Beklenen: [{"box_2d": [y_min, x_min, y_max, x_max], "label": "..."}]
+    Dönüş: ham item listesi (doğrulama yapılmaz). Bulunamazsa [].
+    """
+    if not content or "final answer" not in content.casefold():
+        return []
+    tail = content.lower().rfind("final answer")
+    tail_text = content[tail:]
+    fence = re.search(r"```json\s*(\[.*?\])\s*```", tail_text, flags=re.DOTALL | re.IGNORECASE)
+    raw = fence.group(1) if fence else None
+    if raw is None:
+        bracket = re.search(r"(\[.*\])", tail_text, flags=re.DOTALL)
+        raw = bracket.group(1) if bracket else None
+    if raw is None:
+        return []
+    try:
+        items = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(items, list):
+        return []
+    return [x for x in items if isinstance(x, dict)]
+
+
+def validate_box_2d(box):
+    """
+    box_2d [y_min, x_min, y_max, x_max] kontrolü.
+    Dönüş: (status, reason); status ∈ {"ok", "suspicious", "invalid"}.
+    Kutu = AI bölge önerisidir; "suspicious" frontend'de uyarıyla gösterilir.
+    """
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return "invalid", "box_2d must have 4 elements"
+    try:
+        ymn, xmn, ymx, xmx = [int(v) for v in box]
+    except Exception:
+        return "invalid", "box_2d must be integers"
+    if not (0 <= ymn < ymx <= 1000 and 0 <= xmn < xmx <= 1000):
+        return "invalid", f"box out of range: {ymn},{xmn},{ymx},{xmx}"
+    area = (ymx - ymn) * (xmx - xmn)
+    if area > 200000 and all(v % 50 == 0 for v in (ymn, xmn, ymx, xmx)):
+        return "suspicious", (
+            f"box too large ({area / 10000:.0f}% of image, round numbers) - "
+            "likely hallucinated center-box, requires visual verification"
+        )
+    return "ok", "ok"
+
+
 async def handle_failure(job_id, payload, consumer_name, retry_count, error_msg, producer):
     """Retry logic: retry < MAX_RETRIES → requeue, else → DLQ"""
     if retry_count < MAX_RETRIES:
@@ -255,15 +308,20 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
     try:
         payload.pop("medasista_metadata", None)
 
+        # Grounding opt-in: {"grounding": true} olan job'lar GROUNDING_VLLM_MODEL
+        # ile çalışır. Bayrak vLLM'e gönderilmez ama retry'de korunur (payload'da kalır).
+        grounding_requested = bool(payload.get("grounding", False))
+
         # Faturalanacak input token sayısı
         billable_input_tokens = calculate_billable_input_tokens(payload)
 
-        payload = sanitize_image_payload(payload)
+        req_payload = {k: v for k, v in payload.items() if k != "grounding"}
+        req_payload = sanitize_image_payload(req_payload)
 
         # Content sıralaması: text parçaları image'dan önce gelmeli
         # MedGemma text-first sıralamada daha iyi sonuç veriyor
-        if isinstance(payload.get("messages"), list):
-            for msg in payload["messages"]:
+        if isinstance(req_payload.get("messages"), list):
+            for msg in req_payload["messages"]:
                 content = msg.get("content")
                 if isinstance(content, list):
                     text_parts = [p for p in content if p.get("type") == "text"]
@@ -272,26 +330,26 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
                     msg["content"] = text_parts + image_parts + other_parts
 
         # Operatör-kontrollü model ve sampling — müşteri input'unu override eder
-        payload["model"] = VLLM_MODEL
-        payload["temperature"] = VLLM_TEMPERATURE
-        payload["top_p"] = VLLM_TOP_P
-        payload["top_k"] = VLLM_TOP_K
-        payload["min_p"] = VLLM_MIN_P
-        payload["repetition_penalty"] = VLLM_REPETITION_PENALTY
-        payload["max_tokens"] = VLLM_MAX_TOKENS
-        payload.pop("stream", None)
+        req_payload["model"] = GROUNDING_VLLM_MODEL if grounding_requested else VLLM_MODEL
+        req_payload["temperature"] = VLLM_TEMPERATURE
+        req_payload["top_p"] = VLLM_TOP_P
+        req_payload["top_k"] = VLLM_TOP_K
+        req_payload["min_p"] = VLLM_MIN_P
+        req_payload["repetition_penalty"] = VLLM_REPETITION_PENALTY
+        req_payload["max_tokens"] = VLLM_MAX_TOKENS
+        req_payload.pop("stream", None)
 
-        user_msg = next((m for m in payload.get("messages", []) if m.get("role") == "user"), None)
+        user_msg = next((m for m in req_payload.get("messages", []) if m.get("role") == "user"), None)
         content_order = [p.get("type") for p in user_msg["content"]] if user_msg and isinstance(user_msg.get("content"), list) else "N/A"
         logger.info(
-            f"[job={job_id}] vLLM payload: model={payload['model']}, "
-            f"temp={payload['temperature']}, top_p={payload['top_p']}, "
-            f"top_k={payload['top_k']}, min_p={payload['min_p']}, "
-            f"rep_penalty={payload['repetition_penalty']}, max_tokens={payload['max_tokens']}, "
-            f"content_order={content_order}"
+            f"[job={job_id}] vLLM payload: model={req_payload['model']}, "
+            f"temp={req_payload['temperature']}, top_p={req_payload['top_p']}, "
+            f"top_k={req_payload['top_k']}, min_p={req_payload['min_p']}, "
+            f"rep_penalty={req_payload['repetition_penalty']}, max_tokens={req_payload['max_tokens']}, "
+            f"grounding={grounding_requested}, content_order={content_order}"
         )
 
-        response = await client.post(VLLM_URL, json=payload, timeout=float(VLLM_TIMEOUT))
+        response = await client.post(VLLM_URL, json=req_payload, timeout=float(VLLM_TIMEOUT))
 
         if response.status_code == 200:
             raw_result = response.json()
@@ -305,11 +363,29 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
             if "<unused94>" in content:
                 content = re.sub(r"<unused94>.*?<unused95>", "", content, flags=re.DOTALL).strip()
 
+            logger.info(f"[job={job_id}] raw_content_len={len(content)} raw_preview={content[:500]!r}")
+
+            # Grounding çıktısı: "Final Answer:" JSON listesi → boxes[]
+            boxes = []
+            for item in extract_grounding_boxes(content):
+                status, reason = validate_box_2d(item.get("box_2d"))
+                boxes.append({
+                    "label": str(item.get("label", "")),
+                    "box_2d": item.get("box_2d"),
+                    "status": status,
+                    "reason": reason,
+                })
+            if boxes and grounding_requested:
+                bad = [b for b in boxes if b["status"] == "invalid"]
+                if bad:
+                    logger.warning(f"[job={job_id}] grounding invalid boxes: {bad}")
+
             vllm_output_tokens = raw_result.get("usage", {}).get("completion_tokens", 0)
             total_tokens = billable_input_tokens + vllm_output_tokens
 
             simplified_result = {
                 "content": content,
+                "boxes": boxes,
                 "usage": {
                     "input_tokens": billable_input_tokens,
                     "output_tokens": vllm_output_tokens,
