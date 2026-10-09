@@ -223,28 +223,39 @@ def sanitize_image_payload(payload):
 
 def extract_grounding_boxes(content):
     """
-    Tek-görsel grounding cevabındaki "Final Answer:" sonrası JSON listesini parse eder.
+    Tek-görsel grounding cevabındaki ```json box_2d listesini parse eder.
+    Önce "Final Answer:" sonrası aranır; bulunamazsa (örn. model "Final Answer: A"
+    gibi MCQ kaçağı yaptıysa) tüm içerikteki ilk box_2d'li ```json bloğu alınır.
     Beklenen: [{"box_2d": [y_min, x_min, y_max, x_max], "label": "..."}]
     Dönüş: ham item listesi (doğrulama yapılmaz). Bulunamazsa [].
     """
-    if not content or "final answer" not in content.casefold():
+    if not content:
         return []
-    tail = content.lower().rfind("final answer")
-    tail_text = content[tail:]
-    fence = re.search(r"```json\s*(\[.*?\])\s*```", tail_text, flags=re.DOTALL | re.IGNORECASE)
-    raw = fence.group(1) if fence else None
-    if raw is None:
-        bracket = re.search(r"(\[.*\])", tail_text, flags=re.DOTALL)
-        raw = bracket.group(1) if bracket else None
-    if raw is None:
-        return []
-    try:
-        items = json.loads(raw)
-    except Exception:
-        return []
-    if not isinstance(items, list):
-        return []
-    return [x for x in items if isinstance(x, dict)]
+    candidates = []
+    low = content.casefold()
+    if "final answer" in low:
+        tail = content[low.rfind("final answer"):]
+        fence = re.search(r"```json\s*(\[.*?\])\s*```", tail, flags=re.DOTALL | re.IGNORECASE)
+        if fence:
+            candidates.append(fence.group(1))
+        else:
+            bracket = re.search(r"(\[.*\])", tail, flags=re.DOTALL)
+            if bracket:
+                candidates.append(bracket.group(1))
+    # Fallback: içeriğin genelinde box_2d içeren ilk ```json bloğu.
+    for m in re.finditer(r"```json\s*(\[.*?\])\s*```", content, flags=re.DOTALL | re.IGNORECASE):
+        if m.group(1) not in candidates:
+            candidates.append(m.group(1))
+    for raw in candidates:
+        try:
+            items = json.loads(raw)
+        except Exception:
+            continue
+        if isinstance(items, list):
+            found = [x for x in items if isinstance(x, dict) and isinstance(x.get("box_2d"), list)]
+            if found:
+                return found
+    return []
 
 
 def validate_box_2d(box):
