@@ -93,9 +93,9 @@ VLLM_MIN_P = float(os.environ.get('VLLM_MIN_P', '0.05'))
 VLLM_REPETITION_PENALTY = float(os.environ.get('VLLM_REPETITION_PENALTY', '1.1'))
 VLLM_MAX_TOKENS = int(os.environ.get('VLLM_MAX_TOKENS', '2048'))
 
-# Grounding istekleri için ayrı model (default: normal modelle aynı).
-# "grounding": true bayraklı job'lar bu modelle çalışır, diğer trafik etkilenmez.
-GROUNDING_VLLM_MODEL = os.environ.get('GROUNDING_VLLM_MODEL', VLLM_MODEL)
+# Grounding istekleri için ayrı model. Boş bırakılırsa o anki VLLM_MODEL'i
+# takip eder (hardcode YOK): Dokploy'da model değişince grounding de değişir.
+GROUNDING_VLLM_MODEL = os.environ.get('GROUNDING_VLLM_MODEL') or VLLM_MODEL
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DB connection pool
