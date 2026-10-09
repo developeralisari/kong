@@ -246,6 +246,10 @@ def extract_grounding_boxes(content):
     for m in re.finditer(r"```json\s*(\[.*?\])\s*```", content, flags=re.DOTALL | re.IGNORECASE):
         if m.group(1) not in candidates:
             candidates.append(m.group(1))
+    # Son çare: fencesiz çıplak [...] (JSON-only prompt çıktısı).
+    bare = re.search(r"(\[\s*\{.*?box_2d.*?\}\s*\])", content, flags=re.DOTALL | re.IGNORECASE)
+    if bare:
+        candidates.append(bare.group(1))
     for raw in candidates:
         try:
             items = json.loads(raw)
@@ -343,6 +347,30 @@ async def process_job(job_id, payload, client, producer, consumer="default", ret
         # Operatör-kontrollü model ve sampling — müşteri input'unu override eder
         req_payload["model"] = GROUNDING_VLLM_MODEL if grounding_requested else VLLM_MODEL
         req_payload["temperature"] = VLLM_TEMPERATURE
+        if grounding_requested:
+            # Grounding deterministik olmalı + çıktı şemaya zorlanır
+            # (vLLM guided JSON; destek prob'la doğrulandı).
+            req_payload["temperature"] = 0.0
+            req_payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "bbox",
+                    "strict": True,
+                    "schema": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "box_2d": {"type": "array", "items": {"type": "integer"},
+                                           "minItems": 4, "maxItems": 4},
+                                "label": {"type": "string"},
+                            },
+                            "required": ["box_2d", "label"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+            }
         req_payload["top_p"] = VLLM_TOP_P
         req_payload["top_k"] = VLLM_TOP_K
         req_payload["min_p"] = VLLM_MIN_P
